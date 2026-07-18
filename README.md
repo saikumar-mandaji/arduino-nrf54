@@ -13,24 +13,57 @@ series. Scope so far: GPIO (`pinMode`/`digitalWrite`/`digitalRead`),
 SAADC), `analogWrite()` (over PWM20), and `attachInterrupt()`/
 `detachInterrupt()` (over GPIOTE).
 
-**Status: private, hardware bring-up in progress on a real nRF54L15-DK.**
-`Blink` is confirmed working end-to-end on real hardware (LED visibly
-blinks at the correct rate). Multiple real bugs were found and fixed via
-SWD debugging that no amount of compile-time checking could have caught
-(see `docs/VERIFICATION.md` for the full account): `Serial` was on the
-wrong UARTE instance; a GRTC startup call crashed with a NULL-pointer
-HardFault; `nrfx_spim` was found to auto-toggle CS around every single
-`SPI.transfer()` call, breaking multi-byte transactions. `Serial`'s
-status is a genuine unresolved discrepancy -- a human using Nordic's own
-Serial Terminal app reported seeing output, but automated tooling
-(two different serial libraries) couldn't independently reproduce it.
-SPI's pins are now confirmed correct (checked directly against the
-DK's onboard flash chip's real wiring and a live register read), but
-data exchanged with that chip still isn't correct, cause not yet
-identified. `Wire`/`analogRead`/`analogWrite`/`attachInterrupt` haven't
-been hardware-tested yet. Will go public once these are resolved.
+**Status: open source, hardware bring-up in progress on a real
+nRF54L15-DK.** `Blink` is confirmed working end-to-end on real hardware
+(LED visibly blinks at the correct rate). Multiple real bugs were found
+and fixed via SWD debugging that no amount of compile-time checking
+could have caught (see `docs/VERIFICATION.md` for the full account):
+`Serial` was on the wrong UARTE instance; a GRTC startup call crashed
+with a NULL-pointer HardFault; `nrfx_spim` was found to auto-toggle CS
+around every single `SPI.transfer()` call, breaking multi-byte
+transactions. `Serial`'s status is a genuine unresolved discrepancy -- a
+human using Nordic's own Serial Terminal app reported seeing output, but
+automated tooling (two different serial libraries) couldn't
+independently reproduce it. SPI's pins are now confirmed correct
+(checked directly against the DK's onboard flash chip's real wiring and
+a live register read), but data exchanged with that chip still isn't
+correct, cause not yet identified. `Wire`/`analogRead`/`analogWrite`/
+`attachInterrupt` haven't been hardware-tested yet. BLE and low-power
+sleep modes are not implemented yet -- see the Roadmap section below.
+Contributions and hardware reports welcome.
 
 ## Quick start
+
+### Install via Arduino IDE Boards Manager (recommended)
+
+Just like ESP32/ESP8266 cores, this SDK is distributed as a Boards
+Manager package -- no manual cloning or submodule setup required:
+
+1. Open Arduino IDE -> **File > Preferences**.
+2. Add this URL to **Additional Boards Manager URLs** (comma-separate
+   it if you already have others there):
+   ```
+   https://raw.githubusercontent.com/saikumar-mandaji/arduino-nrf54/main/package_saikumar-mandaji_nrf54_index.json
+   ```
+3. Open **Tools > Board > Boards Manager**, search for `nrf54l`, and
+   install "Nordic nRF54L (arduino-nrf54)".
+4. Select **Tools > Board > Nordic nRF54L15-DK**, pick the board's
+   serial/SWD port, and upload like any other Arduino board.
+
+**One thing Boards Manager does *not* install for you:** the
+`arm-none-eabi-gcc`/`g++`/`objcopy` toolchain used to actually compile
+sketches. Install the [ARM GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
+and make sure it's on your `PATH` before building. Flashing real
+hardware also needs Nordic's `nrfutil` (`winget install
+NordicSemiconductor.nrfutil`, then `nrfutil install device`) -- see
+`docs/hardware/BOM.md` for details.
+
+This flow was verified end-to-end: `arduino-cli core update-index` +
+`core install saikumar-mandaji:nrf54l` against the real published
+package index and GitHub release, followed by a real compile
+(`Blink`, 7904 bytes) against the genuinely-installed copy.
+
+### Build from source (for contributors)
 
 **Clone with submodules** (this repo vendors Nordic's `nrfx` and ARM's
 `CMSIS_6` as git submodules -- a plain clone will leave `extern/` empty):
@@ -62,14 +95,31 @@ this repository at `<sketchbook>/hardware/<vendor>/nrf54l/` so
 arduino-cli compile --fqbn <vendor>:nrf54l:nrf54l15dk examples/Blink
 ```
 
-**Flashing** (untested -- no hardware available during development, see
-`docs/VERIFICATION.md`): either drag-and-drop the built `.hex` onto the
-DK's `JLINK` USB mass-storage drive, or use `nrfjprog`/`nrfutil` via the
-`tools.nrfjprog.upload.pattern` recipe in `platform.txt`.
+**Flashing**: use `nrfutil device program` -- confirmed working on real
+hardware. Drag-and-drop onto the DK's `JLINK` USB mass-storage drive is
+**not** reliable (fails on at least the DK unit used during bring-up,
+see `docs/hardware/BOM.md`).
 
 Full hardware requirements: [`docs/hardware/BOM.md`](docs/hardware/BOM.md)
 (short version: just the nRF54L15-DK and a USB-C cable -- both examples
 use only onboard peripherals).
+
+## Roadmap
+
+- **BLE**: not implemented yet. The nRF54L15's radio supports BLE 6.0,
+  but this core doesn't expose it. Planned approach: Nordic's
+  SoftDevice Controller (from `sdk-nrfxlib`) as the link-layer/controller,
+  paired with an open host stack such as NimBLE -- being scoped now.
+- **Low-power sleep modes**: not implemented yet. `delay()` currently
+  busy-waits on GRTC rather than entering a real low-power sleep state.
+- **`Wire`/`analogRead`/`analogWrite`/`attachInterrupt`**: implemented
+  and compile-tested, but not yet exercised on real hardware.
+- Genuine unresolved hardware mysteries (`Serial` tooling discrepancy,
+  SPI JEDEC ID read) are tracked in `docs/VERIFICATION.md`.
+
+Issues and PRs welcome -- see
+[`docs/GUIDE.md`](docs/GUIDE.md) for the architecture overview before
+diving in.
 
 ## Docs
 
