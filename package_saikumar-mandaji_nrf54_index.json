@@ -1,0 +1,35 @@
+{
+  "packages": [
+    {
+      "name": "saikumar-mandaji",
+      "maintainer": "Saikumar Mandaji",
+      "websiteURL": "https://github.com/saikumar-mandaji/arduino-nrf54",
+      "email": "mandajisaikumar@gmail.com",
+      "help": {
+        "online": "https://github.com/saikumar-mandaji/arduino-nrf54/issues"
+      },
+      "platforms": [
+        {
+          "name": "Nordic nRF54L (arduino-nrf54)",
+          "architecture": "nrf54l",
+          "version": "0.1.0",
+          "category": "Contributed",
+          "url": "https://github.com/saikumar-mandaji/arduino-nrf54/releases/download/v0.1.0/arduino-nrf54-0.1.0.zip",
+          "archiveFileName": "arduino-nrf54-0.1.0.zip",
+          "checksum": "SHA-256:2cb1ac2e6c321c57e10b9adc4973022bf4338d0410271e88581e47fb497ca75d",
+          "size": "2513860",
+          "help": {
+            "online": "https://github.com/saikumar-mandaji/arduino-nrf54/blob/main/docs/GUIDE.md"
+          },
+          "boards": [
+            {
+              "name": "Nordic nRF54L15-DK"
+            }
+          ],
+          "toolsDependencies": []
+        }
+      ],
+      "tools": []
+    }
+  ]
+}
