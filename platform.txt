@@ -1,0 +1,73 @@
+name=Nordic nRF54L (arduino-nrf54)
+version=0.1.0
+
+# Requires arm-none-eabi-gcc/g++/objcopy/size on PATH. This core does not
+# bundle/manage the toolchain via Arduino's package system -- install the
+# ARM GNU Toolchain yourself (https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
+# and make sure its bin/ directory is on PATH. compiler.path is
+# intentionally empty so the recipes below resolve against PATH.
+compiler.path=
+compiler.c.cmd=arm-none-eabi-gcc
+compiler.c.flags=-c -mcpu={build.mcu} -mthumb {build.float-abi} {build.fpu} -std=gnu11 -Wall -O1 -ffunction-sections -fdata-sections -MMD
+
+compiler.c.elf.cmd=arm-none-eabi-gcc
+compiler.c.elf.flags=-mcpu={build.mcu} -mthumb {build.float-abi} {build.fpu} -specs=nano.specs -specs=nosys.specs -Wl,--gc-sections
+
+compiler.S.cmd=arm-none-eabi-gcc
+compiler.S.flags=-c -mcpu={build.mcu} -mthumb {build.float-abi} {build.fpu} -x assembler-with-cpp
+
+compiler.cpp.cmd=arm-none-eabi-g++
+compiler.cpp.flags=-c -mcpu={build.mcu} -mthumb {build.float-abi} {build.fpu} -std=gnu++17 -Wall -O1 -fno-exceptions -fno-rtti -ffunction-sections -fdata-sections -MMD
+
+compiler.ar.cmd=arm-none-eabi-ar
+compiler.ar.flags=rcs
+compiler.ar.extra_flags=
+
+compiler.objcopy.cmd=arm-none-eabi-objcopy
+compiler.objcopy.hex.flags=-O ihex
+compiler.objcopy.eep.flags=
+
+compiler.size.cmd=arm-none-eabi-size
+
+compiler.define=-DARDUINO_NRF54=1
+compiler.libraries.ldflags=
+
+# nrfx and CMSIS_6 are git submodules at the repo root -- extern/nrfx,
+# extern/CMSIS_6 -- referenced here relative to {build.core.path}/../..
+# since the core lives at cores/nrf54l.
+compiler.includes=-I{build.core.path} -I{build.variant.path} -I{build.core.path}/../../extern/nrfx -I{build.core.path}/../../extern/nrfx/drivers/include -I{build.core.path}/../../extern/nrfx/hal -I{build.core.path}/../../extern/nrfx/haly -I{build.core.path}/../../extern/nrfx/lib -I{build.core.path}/../../extern/nrfx/helpers -I{build.core.path}/../../extern/nrfx/bsp/stable -I{build.core.path}/../../extern/nrfx/bsp/stable/mdk -I{build.core.path}/../../extern/nrfx/bsp/stable/mdk/nrf54l/nrf54l15 -I{build.core.path}/../../extern/nrfx/bsp/stable/mdk/common -I{build.core.path}/../../extern/CMSIS_6/CMSIS/Core/Include
+
+## Compile c files
+recipe.c.o.pattern="{compiler.path}{compiler.c.cmd}" {compiler.c.flags} {build.extra_flags} {compiler.define} {compiler.includes} "{source_file}" -o "{object_file}"
+
+## Compile c++ files
+recipe.cpp.o.pattern="{compiler.path}{compiler.cpp.cmd}" {compiler.cpp.flags} {build.extra_flags} {compiler.define} {compiler.includes} "{source_file}" -o "{object_file}"
+
+## Compile S files
+recipe.S.o.pattern="{compiler.path}{compiler.S.cmd}" {compiler.S.flags} {build.extra_flags} {compiler.define} {compiler.includes} "{source_file}" -o "{object_file}"
+
+## Create archives
+recipe.ar.pattern="{compiler.path}{compiler.ar.cmd}" {compiler.ar.flags} {compiler.ar.extra_flags} "{archive_file_path}" "{object_file}"
+
+## Combine gc-sections, archives, and objects
+recipe.c.combine.pattern="{compiler.path}{compiler.c.elf.cmd}" {compiler.c.elf.flags} -T{build.ldscript} "-L{build.core.path}/../../extern/nrfx/bsp/stable/mdk/nrf54l/nrf54l15" "-L{build.core.path}/../../extern/nrfx/bsp/stable/mdk/common" -Wl,-Map,{build.path}/{build.project_name}.map -o "{build.path}/{build.project_name}.elf" {object_files} "{archive_file_path}" -Wl,--start-group -lm -lc -lgcc -Wl,--end-group
+
+## Create output files (.hex file)
+recipe.objcopy.hex.pattern="{compiler.path}{compiler.objcopy.cmd}" {compiler.objcopy.hex.flags} "{build.path}/{build.project_name}.elf" "{build.path}/{build.project_name}.hex"
+
+## Save hex
+recipe.output.tmp_file={build.project_name}.hex
+recipe.output.save_file={build.project_name}.{build.variant}.hex
+
+## Compute size
+recipe.size.pattern="{compiler.path}{compiler.size.cmd}" -A "{build.path}/{build.project_name}.elf"
+recipe.size.regex=^(?:\.vectors|\.text|\.rodata|\.copy\.table|\.zero\.table|\.data)\s+([0-9]+).*
+recipe.size.data=^(?:\.data|\.bss|\.zero\.table)\s+([0-9]+).*
+recipe.size.eeprom=^(?:\.eeprom)\s+([0-9]+).*
+
+## nrfjprog upload (nRF54L15-DK has an onboard J-Link -- no separate
+## programmer needed, see docs/hardware/BOM.md). Requires Nordic's
+## nrfjprog / nrfutil device tools installed separately.
+tools.nrfjprog.cmd=nrfjprog
+tools.nrfjprog.cmd.windows=nrfjprog.exe
+tools.nrfjprog.upload.pattern="{cmd}" --program "{build.path}/{build.project_name}.hex" --chiperase --verify -f NRF54L --reset

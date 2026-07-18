@@ -1,0 +1,25 @@
+menu.debug=Debug
+
+nrf54l15dk.name=Nordic nRF54L15-DK
+
+nrf54l15dk.upload.tool=nrfjprog
+nrf54l15dk.upload.protocol=jlink
+nrf54l15dk.upload.maximum_size=1531904
+nrf54l15dk.upload.maximum_data_size=262144
+nrf54l15dk.upload.use_1200bps_touch=false
+nrf54l15dk.upload.wait_for_upload_port=false
+
+nrf54l15dk.build.core=nrf54l
+nrf54l15dk.build.variant=nrf54l15dk
+nrf54l15dk.build.mcu=cortex-m33
+nrf54l15dk.build.fpu=-mfpu=fpv5-sp-d16
+nrf54l15dk.build.float-abi=-mfloat-abi=hard
+nrf54l15dk.build.board=NRF54L15DK
+nrf54l15dk.build.extra_flags=-DNRF54L15_XXAA -DNRF_APPLICATION -D__STARTUP_CLEAR_BSS
+nrf54l15dk.build.ldscript=nrf54l15_xxaa_application.ld
+nrf54l15dk.build.openocdscript=
+
+nrf54l15dk.menu.debug.on=Enabled
+nrf54l15dk.menu.debug.on.build.extra_flags=-DNRF54L15_XXAA -DNRF_APPLICATION -D__STARTUP_CLEAR_BSS -DDEBUG_NRF
+nrf54l15dk.menu.debug.off=Disabled
+nrf54l15dk.menu.debug.off.build.extra_flags=-DNRF54L15_XXAA -DNRF_APPLICATION -D__STARTUP_CLEAR_BSS -DNDEBUG

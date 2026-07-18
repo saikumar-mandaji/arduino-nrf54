@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        example: [Blink, SerialEcho, I2CScanner, SPILoopback, AnalogReadSerial, PWMFade, ButtonInterrupt]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install ARM GNU Toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi
+
+      - name: Build ${{ matrix.example }}
+        run: make EXAMPLE=${{ matrix.example }}
+
+      - name: Report size
+        run: arm-none-eabi-size build/${{ matrix.example }}/${{ matrix.example }}.elf
