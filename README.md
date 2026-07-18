@@ -109,7 +109,9 @@ use only onboard peripherals).
 - **BLE**: not implemented yet. The nRF54L15's radio supports BLE 6.0,
   but this core doesn't expose it. Planned approach: Nordic's
   SoftDevice Controller (from `sdk-nrfxlib`) as the link-layer/controller,
-  paired with an open host stack such as NimBLE -- being scoped now.
+  paired with an open host stack such as NimBLE -- see
+  [`docs/BLE_ROADMAP.md`](docs/BLE_ROADMAP.md) for the scoping notes
+  and open questions.
 - **Low-power sleep modes**: not implemented yet. `delay()` currently
   busy-waits on GRTC rather than entering a real low-power sleep state.
 - **`Wire`/`analogRead`/`analogWrite`/`attachInterrupt`**: implemented
