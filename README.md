@@ -113,7 +113,10 @@ use only onboard peripherals).
   [`docs/BLE_ROADMAP.md`](docs/BLE_ROADMAP.md) for the scoping notes
   and open questions.
 - **Low-power sleep modes**: not implemented yet. `delay()` currently
-  busy-waits on GRTC rather than entering a real low-power sleep state.
+  busy-waits on GRTC rather than entering a real low-power sleep state
+  -- see [`docs/LOW_POWER_ROADMAP.md`](docs/LOW_POWER_ROADMAP.md) for
+  the scoping notes (System ON idle vs. System OFF deep sleep, the
+  real nRF54L15 APIs involved, and concrete next steps).
 - **`Wire`/`analogRead`/`analogWrite`/`attachInterrupt`**: implemented
   and compile-tested, but not yet exercised on real hardware.
 - Genuine unresolved hardware mysteries (`Serial` tooling discrepancy,
