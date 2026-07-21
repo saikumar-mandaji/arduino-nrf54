@@ -5,21 +5,33 @@
 ![Target](https://img.shields.io/badge/target-nRF54L15-00A9CE)
 ![Status](https://img.shields.io/badge/status-hardware%20bring--up%20in%20progress-orange)
 
-**An Arduino API core for the Nordic nRF54L15** — built on Nordic's `nrfx`
-HAL and ARM's CMSIS-Core, since no Arduino core exists yet for the nRF54
-series. Write ordinary `setup()`/`loop()` sketches with `Serial`, `SPI`,
-`Wire`, `analogRead()`/`analogWrite()`, and `attachInterrupt()`, exactly
-like any other Arduino board — no vendor SDK, no Zephyr, no RTOS required.
+An Arduino core for the Nordic nRF54L15 — built on Nordic's `nrfx` HAL and
+ARM's CMSIS-Core, since no Arduino core exists yet for the nRF54 series.
+Write ordinary `setup()`/`loop()` sketches with `Serial`, `SPI`, `Wire`,
+`analogRead()`/`analogWrite()`, and `attachInterrupt()`, exactly like any
+other Arduino board — no vendor SDK, no Zephyr, no RTOS required.
 
-> **Status: open source, hardware bring-up in progress on a real
-> nRF54L15-DK.** Most peripherals are confirmed working on real silicon
-> via SWD debugging, not just compiled. See [Verified on real
-> hardware](#verified-on-real-hardware) below and
-> [`docs/VERIFICATION.md`](docs/VERIFICATION.md) for the full,
-> unvarnished account — including what's *not* yet confirmed.
-> Contributions and hardware reports welcome.
+*Status: open source, hardware bring-up in progress on a real
+nRF54L15-DK. Most peripherals below are confirmed working on real
+silicon via SWD debugging, not just compiled — see [Verified on real
+hardware](#verified-on-real-hardware). Contributions and hardware
+reports from other supported boards are very welcome.*
 
-## Features
+# Table of contents
+* [Supported peripherals](#supported-peripherals)
+* [Supported boards](#supported-boards)
+* **[How to install](#how-to-install)**
+  - [Boards Manager Installation](#boards-manager-installation)
+  - [Build from source](#build-from-source)
+* **[Getting started](#getting-started)**
+* [Pin macros](#pin-macros)
+* [Flashing](#flashing)
+* [Verified on real hardware](#verified-on-real-hardware)
+* [Roadmap](#roadmap)
+* [Docs](#docs)
+* [License](#license)
+
+## Supported peripherals
 
 | API | Peripheral | Status |
 |---|---|---|
@@ -34,9 +46,9 @@ like any other Arduino board — no vendor SDK, no Zephyr, no RTOS required.
 | BLE controller bring-up (`mpsl_init`→`sdc_enable`) | RADIO / MPSL / SDC | ✅ Hardware-verified (not yet exposed to sketches — see [Roadmap](#roadmap)) |
 | System OFF deep sleep | REGULATORS | ❌ Not implemented yet |
 
-See [`docs/VERIFICATION.md`](docs/VERIFICATION.md) for exactly how each ✅ was
-verified (register reads, SWD halts, measured values) — nothing here is
-marked verified on the strength of "it compiled."
+See [`docs/VERIFICATION.md`](docs/VERIFICATION.md) for exactly how each ✅
+was verified (register reads, SWD halts, measured values) — nothing here
+is marked verified on the strength of "it compiled."
 
 ## Supported boards
 
@@ -47,24 +59,27 @@ marked verified on the strength of "it compiled."
 | Ezurio BL54L15 DVK | `ezurio_bl54l15dvk` | Same caveat as XIAO |
 | Raytac AN54LQ-DB-15 | `raytac_an54lq15db` | Same caveat as XIAO |
 
-## Quick start
+Full hardware requirements (BOM): [`docs/hardware/BOM.md`](docs/hardware/BOM.md)
+— short version, just the board and a USB-C cable, every example uses
+only onboard peripherals.
 
-### Install via Arduino IDE Boards Manager (recommended)
+## How to install
+
+#### Boards Manager Installation
 
 Just like ESP32/ESP8266 cores, this SDK is distributed as a Boards
 Manager package — no manual cloning or submodule setup required:
 
-1. Open Arduino IDE → **File > Preferences**.
-2. Add this URL to **Additional Boards Manager URLs** (comma-separate
-   it if you already have others there):
-   ```
-   https://raw.githubusercontent.com/saikumar-mandaji/arduino-nrf54/main/package_saikumar-mandaji_nrf54_index.json
-   ```
-3. Open **Tools > Board > Boards Manager**, search for `nrf54l`, and
-   install "Nordic nRF54L (arduino-nrf54)".
-4. Select **Tools > Board** and pick your board (see
-   [Supported boards](#supported-boards) above). Pick the board's
-   serial/SWD port and upload like any other Arduino board.
+* Open the Arduino IDE.
+* Open the **File > Preferences** menu item.
+* Enter the following URL in **Additional Boards Manager URLs**:
+  `https://raw.githubusercontent.com/saikumar-mandaji/arduino-nrf54/main/package_saikumar-mandaji_nrf54_index.json`
+* Open the **Tools > Board > Boards Manager...** menu item.
+* Wait for the platform indexes to finish downloading.
+* Scroll down until you see the **Nordic nRF54L (arduino-nrf54)** entry and click on it.
+* Click **Install**.
+* After installation completes, close the **Boards Manager** window.
+* Open **Tools > Board** and pick your board (see [Supported boards](#supported-boards)).
 
 **The toolchain is installed for you.** Boards Manager downloads the
 real ARM GNU Toolchain 14.2.rel1 (`arm-none-eabi-gcc`/`g++`/`objcopy`)
@@ -82,9 +97,8 @@ was caught by actually testing a fresh install, not assumed); the
 mirror is the identical, unmodified toolchain contents, just re-zipped
 with a single wrapping folder. You do **not** need to install
 `arm-none-eabi-gcc` yourself for this install path. Flashing real
-hardware still needs Nordic's `nrfutil` separately (`winget install
-NordicSemiconductor.nrfutil`, then `nrfutil install device`) — see
-[`docs/hardware/BOM.md`](docs/hardware/BOM.md) for details.
+hardware still needs Nordic's `nrfutil` separately — see
+[Flashing](#flashing) below.
 
 <details>
 <summary>How this install path was verified (click to expand)</summary>
@@ -100,10 +114,11 @@ the published v0.2.0 release.
 
 </details>
 
-### Build from source (for contributors)
+#### Build from source
 
-**Clone with submodules** (this repo vendors Nordic's `nrfx` and ARM's
-`CMSIS_6` as git submodules — a plain clone will leave `extern/` empty):
+For contributors. Clone with submodules (this repo vendors Nordic's
+`nrfx` and ARM's `CMSIS_6` as git submodules — a plain clone leaves
+`extern/` empty):
 
 ```sh
 git clone --recurse-submodules <this-repo-url>
@@ -111,8 +126,8 @@ git clone --recurse-submodules <this-repo-url>
 git submodule update --init --recursive
 ```
 
-**Build via the Makefile** (requires `arm-none-eabi-gcc`/`g++`/`objcopy`/
-`size` on PATH — e.g. the [ARM GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)):
+Build via the Makefile (requires `arm-none-eabi-gcc`/`g++`/`objcopy`/
+`size` on `PATH` — e.g. the [ARM GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)):
 
 ```sh
 make EXAMPLE=Blink
@@ -124,7 +139,7 @@ make EXAMPLE=PWMFade
 make EXAMPLE=ButtonInterrupt
 ```
 
-**Build via the Arduino IDE / `arduino-cli`**: place (or symlink/junction)
+Or build via the Arduino IDE / `arduino-cli`: place (or symlink/junction)
 this repository at `<sketchbook>/hardware/<vendor>/nrf54l/` so
 `arduino-cli`/the IDE picks up `boards.txt`/`platform.txt`, then:
 
@@ -132,14 +147,75 @@ this repository at `<sketchbook>/hardware/<vendor>/nrf54l/` so
 arduino-cli compile --fqbn <vendor>:nrf54l:nrf54l15dk examples/Blink
 ```
 
-**Flashing**: use `nrfutil device program` — confirmed working on real
-hardware. Drag-and-drop onto the DK's `JLINK` USB mass-storage drive is
-**not** reliable (fails on at least the DK unit used during bring-up,
-see [`docs/hardware/BOM.md`](docs/hardware/BOM.md)).
+## Getting started
 
-Full hardware requirements: [`docs/hardware/BOM.md`](docs/hardware/BOM.md)
-(short version: just the nRF54L15-DK and a USB-C cable — every example
-uses only onboard peripherals).
+* Plug in your board (see [Supported boards](#supported-boards)) via USB-C.
+* Open **Tools > Board**, select **Nordic nRF54L (arduino-nrf54)**, then pick your specific board.
+* Select the correct port under **Tools > Port**.
+* Open one of the bundled examples (**File > Examples > Nordic nRF54L**) — `Blink` is the quickest sanity check — and hit **Upload**.
+
+A minimal sketch looks exactly like any other Arduino target:
+
+```cpp
+#include <Arduino.h>
+
+void setup()
+{
+    Serial.begin(115200);
+    pinMode(LED_BUILTIN, OUTPUT);
+}
+
+void loop()
+{
+    digitalWrite(LED_BUILTIN, HIGH);
+    Serial.println("tick");
+    delay(500);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(500);
+}
+```
+
+More complete examples, one per peripheral, live in
+[`examples/`](examples/): `Blink`, `SerialEcho`, `I2CScanner`,
+`SPILoopback`, `AnalogReadSerial`, `PWMFade`, `ButtonInterrupt`, and
+`BLEHardwareTest` (controller-only, not yet a usable BLE API — see
+[Roadmap](#roadmap)).
+
+## Pin macros
+
+You don't have to think in raw GPIO numbers. Each variant's
+`pins_arduino.h` defines `P0_PIN(n)`/`P1_PIN(n)`/`P2_PIN(n)` macros that
+map directly onto the nRF54L15's three physical GPIO ports:
+
+```cpp
+// Use P1_PIN(4) to refer to physical pin P1.04 directly
+digitalWrite(P1_PIN(4), HIGH);
+
+// Equivalent to using the board's linear Arduino pin numbering
+digitalWrite(D11, HIGH);
+```
+
+Board-specific constants (`LED_BUILTIN`, `BTN1`, `PIN_SERIAL_TX`/`RX`,
+`PIN_SPI_*`, `PIN_WIRE_*`, `PIN_PWM0..3`) are all just `P0_PIN`/`P1_PIN`/
+`P2_PIN` expressions under the hood — see your board's
+`variants/<board>/pins_arduino.h` for the exact mapping, and
+[`docs/hardware/BOM.md`](docs/hardware/BOM.md) for which of those are
+hardware-confirmed versus best-effort placeholders.
+
+## Flashing
+
+Use `nrfutil device program` — confirmed working on real hardware:
+
+```sh
+nrfutil install device   # one-time setup
+nrfutil device program --firmware build/Blink.hex
+```
+
+Drag-and-drop onto the DK's `JLINK` USB mass-storage drive is **not**
+reliable (fails on at least the DK unit used during bring-up, see
+[`docs/hardware/BOM.md`](docs/hardware/BOM.md)). The Arduino IDE's
+**Upload** button calls `nrfutil` under the hood, so this only matters
+if you're flashing manually.
 
 ## Verified on real hardware
 
