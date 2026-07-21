@@ -3,20 +3,25 @@
 This document records the design pass for adding real low-power sleep
 to this core, plus the status of the first implemented piece.
 
-**Status (2026-07-21): `delay(ms)` now sleeps via System ON idle
-(WFI + a dedicated GRTC compare channel) instead of busy-waiting.**
-See `cores/nrf54l/wiring_time.c`. This compiles and links cleanly
-against the real `nrfx_grtc` driver source (verified by manually
-replicating the Makefile's build recipe for `Blink` end-to-end), but
-is **not yet hardware-validated** -- next step is halting the CPU over
-SWD mid-`delay()` on a real nRF54L15-DK to confirm it's actually
-sitting in WFI and not spinning, the same technique used to catch the
-GRTC autostart and NULL-pointer bugs documented in
-`docs/VERIFICATION.md`. `delayMicroseconds()` intentionally still
-busy-waits (see the rationale in the `wiring_time.c` file comment) --
-only `delay()`'s millisecond-granularity sleeps get the System ON idle
-treatment, since the interrupt/wake overhead would make short
-`delayMicroseconds()` calls inaccurate.
+**Status (2026-07-21): `delay(ms)` sleeps via System ON idle (WFI + a
+dedicated GRTC compare channel) instead of busy-waiting, and this is
+now HARDWARE-VALIDATED on a real nRF54L15-DK.** See
+`cores/nrf54l/wiring_time.c`. Disassembled `delay()` and confirmed the
+exact address of its `wfi` instruction, then halted the CPU over SWD
+repeatedly (5 times in a row, across two different sketches -- `Blink`
+and `I2CScanner`) and found it landed **every single time** at the
+instruction immediately after `wfi`, not spinning somewhere in the
+busy-wait fallback path. This is exactly the test this document
+originally called for. See `docs/VERIFICATION.md` for the full account
+-- getting to this point also required finding and fixing a real,
+previously-invisible bug: the GRTC interrupt vector wasn't actually
+wired to this core's handler at all (a missing `nrfx_irqs.h` include),
+so the very first real-hardware exercise of this interrupt-driven
+`delay()` hung the board solid. `delayMicroseconds()` intentionally
+still busy-waits (see the rationale in the `wiring_time.c` file
+comment) -- only `delay()`'s millisecond-granularity sleeps get the
+System ON idle treatment, since the interrupt/wake overhead would make
+short `delayMicroseconds()` calls inaccurate.
 
 Everything below this point is the original scoping pass, kept for the
 still-unimplemented System OFF (deep sleep) tier. This is the smaller,
@@ -122,14 +127,12 @@ nRF54L15/LM20A). Concretely useful, verified-by-reading-source parts:
 
 ## Concrete next steps
 
-1. ~~Prototype System ON idle first~~ **Implemented (compile-verified,
-   not yet hardware-verified)** -- `delay(ms)` now arms a dedicated
-   GRTC compare channel and sleeps in a `while (!s_delay_woken) __WFI();`
-   loop instead of busy-waiting; see the status note at the top of this
-   file. Still need to: validate on real hardware over SWD the same way
-   GRTC/SPI bugs were found earlier in this project -- halt the CPU
-   mid-`delay()` and confirm it's actually in a WFI-halted state, not
-   spinning.
+1. ~~Prototype System ON idle first~~ **Done, hardware-verified** --
+   `delay(ms)` arms a dedicated GRTC compare channel and sleeps in a
+   `while (!s_delay_woken) __WFI();` loop instead of busy-waiting;
+   confirmed on a real nRF54L15-DK that the CPU genuinely halts at the
+   `wfi` instruction rather than spinning (see the status note at the
+   top of this file and `docs/VERIFICATION.md`).
 2. Audit each existing peripheral driver (`HardwareSerial`, `SPI`,
    `Wire`, `analogRead`, `analogWrite`, `attachInterrupt`) for sleep
    interaction -- specifically, whether an ISR needs to run to

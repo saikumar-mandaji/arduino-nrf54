@@ -23,6 +23,23 @@
 
 static nrfx_spim_t s_spim = NRFX_SPIM_INSTANCE(NRF_SPIM21);
 
+/* nrfx_spim's IRQ handler is generic/instance-parameterized, same as
+ * nrfx_uarte's (see the trampoline in HardwareSerial.cpp for the full
+ * explanation and how this was found on real hardware). Checked
+ * nrfx_spim.c directly before adding this: begin() below passes a NULL
+ * event handler, and nrfx_spim's own blocking-transfer path (used
+ * whenever there's no handler) polls the SPIM END event directly via
+ * nrfy_spim_xfer_start()'s blocking mode -- it does NOT wait on this
+ * interrupt, so SPI.transfer() was not actually broken by the missing
+ * vector. This trampoline is still correct/necessary plumbing, though:
+ * any future event-driven (non-blocking) SPI support would need
+ * SERIAL21_IRQHandler wired, and it's what nrfx_irqs_nrf54l15_application.h
+ * expects the integrator to provide for this instance regardless. */
+extern "C" void nrfx_spim_21_irq_handler(void)
+{
+    nrfx_spim_irq_handler(&s_spim);
+}
+
 SPIClass::SPIClass() : _began(false)
 {
 }

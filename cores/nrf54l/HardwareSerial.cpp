@@ -44,6 +44,24 @@ static void rx_rearm(void)
     (void)nrfx_uarte_rx_buffer_set(&s_uarte, &s_rx_byte, 1);
 }
 
+/* REAL BUG FOUND ON HARDWARE (2026-07-21): nrfx_uarte's IRQ handler is
+ * generic and instance-parameterized (nrfx_uarte_irq_handler(nrfx_uarte_t*)),
+ * unlike GRTC's fixed no-argument handler -- with NRFX_PRS_ENABLED=0
+ * (this core's config), nrfx never wires this to the real vector table
+ * itself; the integrator must provide a statically-named trampoline for
+ * the preprocessor rename chain in nrfx_irqs_nrf54l15_application.h
+ * (#define nrfx_uarte_30_irq_handler SERIAL30_IRQHandler) to have
+ * anything to rename. Without this, SERIAL30_IRQHandler stayed weak-
+ * aliased to Default_Handler -- confirmed via `nm` on a real build
+ * before this fix -- so RX_DONE events (and therefore Serial.read())
+ * never actually fired the callback above. See cores/nrf54l/nrfx_config.h
+ * for the related GRTC-vector fix found the same way, and
+ * docs/VERIFICATION.md. */
+extern "C" void nrfx_uarte_30_irq_handler(void)
+{
+    nrfx_uarte_irq_handler(&s_uarte);
+}
+
 HardwareSerial::HardwareSerial() : _began(false)
 {
 }

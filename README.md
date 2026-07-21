@@ -15,22 +15,29 @@ SAADC), `analogWrite()` (over PWM20), and `attachInterrupt()`/
 
 **Status: open source, hardware bring-up in progress on a real
 nRF54L15-DK.** `Blink` is confirmed working end-to-end on real hardware
-(LED visibly blinks at the correct rate). Multiple real bugs were found
-and fixed via SWD debugging that no amount of compile-time checking
-could have caught (see `docs/VERIFICATION.md` for the full account):
-`Serial` was on the wrong UARTE instance; a GRTC startup call crashed
-with a NULL-pointer HardFault; `nrfx_spim` was found to auto-toggle CS
-around every single `SPI.transfer()` call, breaking multi-byte
-transactions. `Serial`'s status is a genuine unresolved discrepancy -- a
-human using Nordic's own Serial Terminal app reported seeing output, but
-automated tooling (two different serial libraries) couldn't
-independently reproduce it. SPI's pins are now confirmed correct
-(checked directly against the DK's onboard flash chip's real wiring and
-a live register read), but data exchanged with that chip still isn't
-correct, cause not yet identified. `Wire`/`analogRead`/`analogWrite`/
-`attachInterrupt` haven't been hardware-tested yet. BLE and low-power
-sleep modes are not implemented yet -- see the Roadmap section below.
-Contributions and hardware reports welcome.
+(LED genuinely blinks, confirmed via direct GPIO register reads over
+SWD, not just visually). Several real bugs have been found and fixed
+via SWD debugging that no amount of compile-time checking could have
+caught (see `docs/VERIFICATION.md` for the full account) -- most
+significantly: **this chip's IRQ vectors weren't actually wired to this
+core's interrupt handlers at all** (a missing nrfx integration include,
+plus missing per-instance trampoline functions nrfx expects the
+integrator to provide), which silently broke `attachInterrupt()`
+entirely and `Serial`'s RX path, invisible to every build/link check
+until real hardware exposed it. Fixed and reverified: `Blink`'s LED
+genuinely toggles, System ON idle `delay()` is confirmed via SWD to
+actually halt the CPU at the `wfi` instruction (not spin), and
+`PWMFade`'s duty cycle is confirmed genuinely changing over real time.
+`Wire`/`SPI` continue to build/run without crashing but still need
+protocol-level hardware confirmation (see `docs/VERIFICATION.md`).
+`Serial`'s output-visibility issue remains a genuine unresolved
+discrepancy -- a human using Nordic's own Serial Terminal app reported
+seeing output, but automated tooling still can't independently
+reproduce it, even after the IRQ vector fix. The SDC/MPSL BLE controller
+bring-up sequence is implemented and **hardware-confirmed working**
+(not yet a usable BLE feature -- see Roadmap). Low-power sleep (System
+ON idle) is implemented and hardware-verified; System OFF deep sleep is
+not yet implemented. Contributions and hardware reports welcome.
 
 ## Quick start
 
@@ -126,26 +133,31 @@ use only onboard peripherals).
 ## Roadmap
 
 - **BLE**: not exposed to sketches yet, but the controller bring-up
-  sequence is implemented and compile/link-verified end-to-end.
+  sequence is implemented and **hardware-verified**.
   `cores/nrf54l/mpsl_glue.c` (gated behind a build flag,
   `ARDUINO_NRF54_MPSL_ENABLED`, so ordinary sketches keep building
-  normally) now actually calls `mpsl_init()` -> `sdc_init()` ->
+  normally) calls `mpsl_init()` -> `sdc_init()` ->
   `sdc_rand_source_register()` (wired to this chip's real CRACEN
   hardware entropy source) -> `sdc_enable()`, with this chip's real
-  RADIO/GRTC/TIMER10/clock IRQ vectors routed to MPSL's handlers.
-  Verified with a full real link against the vendored SDC/MPSL binaries
-  and libc -- **not yet verified on real hardware**, and there's still
-  no Arduino API or HCI host, so none of this is reachable from a
+  RADIO/GRTC/TIMER10/clock IRQ vectors routed to MPSL's handlers --
+  confirmed genuinely succeeding on a real nRF54L15-DK
+  (`examples/BLEHardwareTest`), not just linking. There's still no
+  Arduino API or HCI host, so none of this is reachable from a normal
   sketch yet. See [`docs/BLE_ROADMAP.md`](docs/BLE_ROADMAP.md) for status and the
   concrete next steps.
-- **Low-power sleep modes**: System ON idle is implemented -- `delay(ms)`
-  now sleeps via WFI + a GRTC compare channel instead of busy-waiting
-  (compile/link-verified, not yet confirmed on real hardware). System
-  OFF (deep sleep) is not implemented yet. See
+- **Low-power sleep modes**: System ON idle is implemented and
+  **hardware-verified** -- `delay(ms)` sleeps via WFI + a GRTC compare
+  channel instead of busy-waiting, confirmed over SWD on a real DK that
+  the CPU genuinely halts at the `wfi` instruction rather than spinning.
+  System OFF (deep sleep) is not implemented yet. See
   [`docs/LOW_POWER_ROADMAP.md`](docs/LOW_POWER_ROADMAP.md) for status
   and the System OFF scoping notes.
-- **`Wire`/`analogRead`/`analogWrite`/`attachInterrupt`**: implemented
-  and compile-tested, but not yet exercised on real hardware.
+- **`Wire`/`SPI`/`analogRead`/`analogWrite`/`attachInterrupt`**: all run
+  on real hardware without crashing after a critical IRQ-vector-wiring
+  bug was found and fixed this session (`attachInterrupt` was completely
+  non-functional before the fix, on any pin). Protocol-level correctness
+  (actual I2C/SPI bus data, actual button-press-to-callback firing) still
+  needs further hardware confirmation -- see `docs/VERIFICATION.md`.
 - Genuine unresolved hardware mysteries (`Serial` tooling discrepancy,
   SPI JEDEC ID read) are tracked in `docs/VERIFICATION.md`.
 

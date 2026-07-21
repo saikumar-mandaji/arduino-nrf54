@@ -16,6 +16,22 @@
 static nrfx_gpiote_t s_gpiote = NRFX_GPIOTE_INSTANCE(NRF_GPIOTE20);
 static bool s_gpiote_began = false;
 
+/* REAL BUG FOUND ON HARDWARE (2026-07-21), the most severe instance of
+ * this class of bug: nrfx_gpiote's IRQ handler is generic/instance-
+ * parameterized (nrfx_gpiote_irq_handler(nrfx_gpiote_t*)), same as
+ * nrfx_uarte/nrfx_spim/nrfx_twim's (see the trampoline in
+ * HardwareSerial.cpp for the full explanation). Unlike those, GPIOTE
+ * has no blocking-mode fallback -- attachInterrupt() is interrupt-driven
+ * by definition, so without this trampoline the real vector
+ * (GPIOTE20_IRQHandler, which nrfx_mdk_fixups.h further resolves to
+ * GPIOTE20_1_IRQHandler for this core's secure/non-TrustZone-split
+ * build) stayed weak-aliased to Default_Handler and attachInterrupt()
+ * callbacks could never fire at all, on any pin. */
+void nrfx_gpiote_20_irq_handler(void)
+{
+    nrfx_gpiote_irq_handler(&s_gpiote);
+}
+
 typedef struct
 {
     bool in_use;

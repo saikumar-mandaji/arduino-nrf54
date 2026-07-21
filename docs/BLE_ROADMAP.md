@@ -4,24 +4,23 @@ This document records the research and initial vendoring work done so
 far toward adding BLE support to this core.
 
 **Status (2026-07-21): the SDC/MPSL controller bring-up sequence is
-implemented and compile/link-verified end-to-end** -- vendored
-binaries, glue functions, IRQ vector routing, GRTC/MPSL conflict
-resolved, and now `nrf54_mpsl_ble_init()` actually calling `mpsl_init()`
--> `sdc_init()` -> `sdc_rand_source_register()` (real CRACEN hardware
-entropy) -> `sdc_enable()` (see "mpsl_init()/sdc_init()/sdc_enable()
-bring-up implemented" below). All of it is gated behind
-`ARDUINO_NRF54_MPSL_ENABLED` (undefined by default) since this project
-has no opt-in BLE library yet, and confirmed to add zero cost/regression
-to ordinary sketches when unused.
+implemented AND HARDWARE-VERIFIED** -- vendored binaries, glue
+functions, IRQ vector routing, GRTC/MPSL conflict resolved, and
+`nrf54_mpsl_ble_init()` (calling `mpsl_init()` -> `sdc_init()` ->
+`sdc_rand_source_register()` (real CRACEN hardware entropy) ->
+`sdc_enable()`) confirmed to genuinely succeed on a real nRF54L15-DK,
+not just compile/link (see "HARDWARE-VERIFIED" below). All of it is
+gated behind `ARDUINO_NRF54_MPSL_ENABLED` (undefined by default) since
+this project has no opt-in BLE library yet, and confirmed to add zero
+cost/regression to ordinary sketches when unused.
 
-**What this is NOT**: a working BLE stack, or even hardware-verified.
-No Arduino API, no HCI host, nothing in this repo calls
-`nrf54_mpsl_ble_init()` from anywhere reachable (no example sketch), and
-none of this has been tested on a real nRF54L15-DK yet -- everything
-above is "compiles and links correctly against the real vendored
-binaries," not "runs correctly." See "Concrete next steps" for what's
-still open: real hardware verification, the host-stack design decision
-(Bare Metal S1xx vs. NimBLE+HCI), and the Arduino-facing API itself.
+**What this is NOT**: a working BLE stack. No Arduino API, no HCI host,
+and nothing calls `nrf54_mpsl_ble_init()` except the dedicated
+`examples/BLEHardwareTest` sketch -- confirming the controller
+bring-up sequence itself works is not the same as having BLE actually
+usable from a sketch. See "Concrete next steps" for what's still open:
+the host-stack design decision (Bare Metal S1xx vs. NimBLE+HCI) and the
+Arduino-facing API itself.
 
 ## Why this isn't a quick add
 
@@ -456,14 +455,24 @@ here.
   identical size to before this change (19744 bytes text), confirming
   zero regression for ordinary sketches.
 
-**NOT hardware-verified.** Build-and-link success is not the same as
-working -- `mpsl_init()`'s LFCLK startup, CRACEN's actual entropy
-behavior, and `sdc_enable()`'s real behavior all need confirming on a
-real nRF54L15-DK over SWD, the same discipline used for every other
-peripheral in this core (`docs/VERIFICATION.md`). Nothing calls
-`nrf54_mpsl_ble_init()` from anywhere reachable yet either (no example
-sketch, no Arduino API) -- this is real, linkable bring-up code, not a
-usable BLE feature.
+**HARDWARE-VERIFIED (2026-07-21).** `examples/BLEHardwareTest` (calls
+`nrf54_mpsl_ble_init()`, lights `LED_BUILTIN` solid on success) was
+flashed to a real nRF54L15-DK with `-DARDUINO_NRF54_MPSL_ENABLED`,
+linked against the real vendored SDC/MPSL archives. Read back over SWD:
+`bleInitResult == 1` (success), and the LED's GPIO register confirmed
+solidly lit. **The entire `mpsl_init()` -> RADIO/GRTC/TIMER10 IRQ setup
+-> `nrfx_cracen_init()` -> `sdc_init()` -> `sdc_rand_source_register()`
+-> `sdc_cfg_set()` -> `malloc()` -> `sdc_enable()` sequence genuinely
+succeeds on real silicon** -- not just compiles/links. See
+`docs/VERIFICATION.md` for the full account, including the two
+previously-invisible IRQ-vector-wiring bugs found and fixed in the same
+session that made this verification meaningful (before those fixes,
+`RADIO_0`/`GRTC_3`/`TIMER10`'s vectors may not have actually reached
+MPSL's real handlers even if `sdc_enable()` reported success).
+
+Still not a usable BLE feature: no HCI host, no Arduino API, and
+nothing calls `nrf54_mpsl_ble_init()` except the dedicated hardware-test
+sketch.
 
 ## Concrete next steps
 
@@ -471,11 +480,8 @@ usable BLE feature.
 2. ~~Route this chip's real IRQ vectors~~ **Done** -- see "IRQ vector
    routing implemented" above.
 3. ~~Get `mpsl_init()` + `sdc_init()` + `sdc_enable()` running~~
-   **Compile/link-verified** -- see "mpsl_init()/sdc_init()/sdc_enable()
-   bring-up implemented" above. Real hardware verification (call
-   `nrf54_mpsl_ble_init()` from a test sketch, halt over SWD, confirm it
-   actually returns `true` and doesn't fault) is still needed before
-   this is more than "links cleanly."
+   **Done, hardware-verified** -- see "HARDWARE-VERIFIED" above and
+   `docs/VERIFICATION.md`.
 4. Evaluate Nordic's own **Bare Metal S115/S145** SoftDevice-style API
    (see reference below) as a possible shortcut for the *host* side
    before building a NimBLE+HCI bridge from scratch -- it sits on top

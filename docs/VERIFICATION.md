@@ -7,6 +7,143 @@ initial hardware bring-up pass (see "Real hardware bring-up" below) --
 most of the disclosures below now reflect that updated state, not the
 original no-hardware constraint.
 
+## Third hardware pass (2026-07-21): the IRQ vector wiring was broken project-wide
+
+The user connected a real nRF54L15-DK and asked for a full validation
+pass with no user interaction required. This found and fixed **the two
+most severe bugs in this project's history** -- both completely
+invisible to every compile/link check performed throughout this
+project, including this session's own earlier `arm-none-eabi-nm -u`
+"zero undefined symbols" checks, because a weak symbol silently
+aliased to `Default_Handler` is not an *undefined* symbol.
+
+**Bug 1: `nrfx_irqs_nrf54l15_application.h` was never included.**
+`extern/nrfx/bsp/stable/templates/nrfx_templates_config.h` (nrfx's own
+template) has `//#include <soc/nrfx_irqs.h>` -- commented out, left for
+the integrator to add. This project's `cores/nrf54l/nrfx_config.h`
+never did. Without it, every nrfx driver's generic
+`nrfx_<periph>_irq_handler` function name is never renamed (via the
+per-chip macro chain) to the real chip vector name -- the driver
+function just compiles under its own name, unreferenced, while the
+real vector table slot stays wired to `Default_Handler` (an infinite
+`b .` loop).
+
+Found by: flashing `Blink` (with this session's new System ON idle
+`delay()` change, the first code in this whole project to actually
+depend on the GRTC interrupt firing -- the old busy-wait `delay()`
+never needed it, so this bug had no way to surface before now), halting
+the CPU repeatedly over SWD, and finding **PC frozen at the exact same
+address after every `go`/resume** -- `arm-none-eabi-nm` confirmed that
+address was `Default_Handler`, and confirmed `GRTC_2_IRQHandler` was
+still weak/aliased to it while the real `nrfx_grtc_irq_handler` function
+body sat compiled-but-unreferenced at a different address entirely.
+Fixed by adding `#include <soc/nrfx_irqs.h>` to `nrfx_config.h`.
+
+**Bug 2: five peripheral drivers need integrator-provided IRQ
+trampolines that never existed.** Unlike GRTC/SAADC (fixed, no-argument
+handlers), `nrfx_uarte`/`nrfx_spim`/`nrfx_twim`/`nrfx_pwm`/`nrfx_gpiote`
+all use a **generic, instance-parameterized** handler
+(`nrfx_uarte_irq_handler(nrfx_uarte_t*)`, etc.). With
+`NRFX_PRS_ENABLED=0` (this core's config, confirmed by reading it), nrfx
+never wires these to the real vector table automatically -- the
+integrator must write a small named function per instance (e.g. `void
+nrfx_uarte_30_irq_handler(void) { nrfx_uarte_irq_handler(&s_uarte); }`)
+for the same per-chip macro chain to have anything to rename. This
+project never had these. Fixed by adding one to each of
+`HardwareSerial.cpp`, `SPI.cpp`, `Wire.cpp`, `wiring_analog.c`, and
+`wiring_interrupts.c`.
+
+Checked (not assumed) whether this actually mattered for each affected
+peripheral, by reading the relevant nrfx driver source directly:
+- **GPIOTE (`attachInterrupt`)**: completely non-functional before this
+  fix, on any pin, with no fallback -- interrupt-driven by definition.
+  The single most severe instance of this bug.
+- **UARTE (`Serial`)**: RX (interrupt-driven, `NRFX_UARTE_EVT_RX_DONE`)
+  was non-functional before this fix. TX uses blocking mode, which
+  nrfx implements as direct register polling -- unaffected by this
+  specific bug, though it may still be affected by the older,
+  separately-documented Serial mystery below.
+- **SPIM (`SPI`)/TWIM (`Wire`)**: confirmed, by reading
+  `nrfx_spim.c`/`nrfx_twim.c` directly, that this core's blocking-mode
+  usage (`NULL` event handler) polls the completion event directly and
+  does **not** depend on the interrupt vector -- so `SPI`/`Wire` were
+  not actually broken by this bug, but the trampolines are still
+  correct, necessary plumbing for any future non-blocking use.
+- **PWM (`analogWrite`)**: same `NULL`-handler pattern as SPIM/TWIM, but
+  *not* independently re-verified against `nrfx_pwm.c`'s internals --
+  unconfirmed either way whether `analogWrite()` needed this vector.
+
+**Fixed and reverified end-to-end on the real DK:**
+- `Blink`: `GRTC_2_IRQHandler` is now a real, distinct symbol
+  (confirmed via `nm`); the LED's GPIO OUT register (`0x50050400`,
+  bit 9) was read 6 times over ~3 seconds and genuinely alternated
+  between `0x000` and `0x200` -- real, confirmed blinking, not just "no
+  crash."
+- **System ON idle `delay()` -- the exact hardware verification
+  `docs/LOW_POWER_ROADMAP.md` had flagged as still needed -- is now
+  done.** Disassembled `delay()` and confirmed address `0x9ce` is the
+  `wfi` instruction; repeated random halts (5 in a row, across two
+  different sketches -- `Blink` and `I2CScanner`) landed **every single
+  time** at `0x9d0`/`0x7b0`, the instruction immediately after `wfi`.
+  This is real, direct confirmation the CPU is genuinely sleeping, not
+  spinning -- a random halt would not land on the same instruction
+  every time if the CPU were busy-looping through a multi-instruction
+  polling path instead.
+- `PWMFade`: PWM20's `ENABLE` register reads `1`; the live duty-cycle
+  buffer (`s_pwm_duty`) was sampled 4 times over ~3 seconds and read
+  `705 -> 301 -> 694 -> 317` (all within the valid 0-1000 range) --
+  genuinely changing, confirming a real fade in progress.
+- `I2CScanner`/`SPILoopback`/`AnalogReadSerial`: all three now run to
+  completion repeatedly without crashing or hanging (confirmed via PC
+  sampling landing inside `delay()`, post-`wfi`, consistent with a
+  normal loop cycling through `Wire`/`SPI`/`analogRead()` calls without
+  faulting) -- but their *protocol-level* correctness (actual I2C ACKs,
+  SPI loopback byte match, ADC reading) could not be independently
+  confirmed this pass: their results are only observable via `Serial`
+  output, which remains the separately-documented unresolved discrepancy
+  below, and `SPILoopback` additionally requires a physical MOSI-MISO
+  jumper not confirmed present on this unit.
+- `ButtonInterrupt`: `attachInterrupt()`'s bookkeeping is confirmed
+  fully correct via live memory read (`s_gpiote_began=true`, slot 0
+  shows `in_use=true`, `pin=45` (`P1.13`, matches `NRF_GPIO_PIN_MAP(1,13)`
+  exactly), `channel=7`, a valid callback pointer), and GPIOTE
+  channel 7's own `CONFIG` register confirms Event mode + falling-edge
+  polarity with the interrupt enabled in `INTENSET1` (matching the
+  `GPIOTE20_1_IRQHandler` line this core's secure/non-TrustZone-split
+  build uses). **Attempted to simulate a physical press** by
+  temporarily reconfiguring `P1.13` as an output, driving it low, then
+  releasing it back to input (a real electrical falling-then-rising
+  transition, confirmed via the `IN` register) -- `EVENTS_IN[7]` never
+  latched and `ledState` never toggled. Inconclusive, not a confirmed
+  failure: the `IN` register read back high the entire time the pin was
+  forced low (`DIR`=output, `OUT`=0), which doesn't match a simple
+  push-pull override and suggests either board-specific loading on this
+  button net or an input-buffer/`PIN_CNF` interaction with `DIR` this
+  session didn't fully resolve. The pin was restored to its original
+  input+pull-up configuration afterward. **Still needs an actual
+  physical button press to confirm end-to-end**, but the entire
+  software/config chain up to the physical pin is now confirmed correct
+  where it wasn't confirmable at all before this session's fix.
+- **BLE controller bring-up** (`docs/BLE_ROADMAP.md`): a new
+  `examples/BLEHardwareTest` sketch calling `nrf54_mpsl_ble_init()`
+  was flashed with `-DARDUINO_NRF54_MPSL_ENABLED` and linked against
+  the real vendored SDC/MPSL archives. Result, read back over SWD:
+  `bleInitResult == 1` (success), and `LED_BUILTIN` lit solidly (not
+  blinking, matching the sketch's success-path behavior) -- confirmed
+  by reading the GPIO OUT register 3 times. **This is real: the entire
+  `mpsl_init()` -> RADIO/GRTC/TIMER10 IRQ setup -> `nrfx_cracen_init()`
+  -> `sdc_init()` -> `sdc_rand_source_register()` -> `sdc_cfg_set()` ->
+  `malloc()` -> `sdc_enable()` sequence genuinely succeeds on real
+  nRF54L15 silicon**, not just compiles/links. Still not a working BLE
+  stack -- no HCI host, no Arduino API (see `docs/BLE_ROADMAP.md`).
+
+**Methodology note**: before trusting the PC-freezing observation above
+as proof of a hang (rather than an artifact of the test tooling), this
+session explicitly verified that separate `nrfutil device` command
+invocations do *not* reset the target or lose RAM state -- wrote a
+distinct value to a known address, then read it back via a completely
+separate command invocation, and it matched exactly.
+
 ## Real hardware bring-up (first pass)
 
 A real nRF54L15-DK (serial 1057780839, board version PCA10156) was
@@ -176,6 +313,18 @@ direction. Next step to actually resolve it: run a known-good terminal
 tool and the automated Python/`.NET` read path side-by-side against the
 same reset, to see whether the automated tooling is doing something
 wrong (most likely) or whether output is somehow intermittent.
+
+**New data point (2026-07-21, `SerialEcho` retested after the IRQ vector
+fix above)**: reading UARTE30's own registers directly over SWD showed
+`ENABLE` = `0` and `PSEL.RXD` = `0xFFFFFFFF` (disconnected) at rest,
+despite `_began` confirming `Serial.begin()` succeeded. Not identified
+as a root cause with confidence -- `nrfx_uarte.c` calls
+`nrfy_uarte_enable()`/`nrfy_uarte_disable()` in multiple places
+(11 call sites total), consistent with a power-saving
+enable-only-during-active-transfer design that may make `ENABLE=0` at
+an arbitrary snapshot completely normal and unrelated to the missing-
+output discrepancy -- but recorded here as a concrete new fact for
+whoever investigates this next, rather than left unexamined.
 
 ## What IS verified (compile-time / pre-hardware)
 
@@ -390,12 +539,17 @@ anything:
 
 - **`ButtonInterrupt` has never seen a real button press.** Confirmed on
   real hardware that `attachInterrupt()` genuinely arms a real NVIC
-  interrupt line (see "PWM and attachInterrupt" above), but whether the
-  ISR actually fires on a real edge, whether the dispatch-table lookup
-  behaves correctly under real interrupt timing, and whether
-  `pinMode(BTN1, INPUT_PULLUP)` + `attachInterrupt(BTN1, ..., FALLING)`
-  is the right pull/edge combination for the DK's actual button wiring
-  are all still unconfirmed without physically pressing it.
+  interrupt line (see "PWM and attachInterrupt" above) and, as of the
+  2026-07-21 IRQ vector fix (see the top of this document), that the
+  vector actually reaches this core's dispatcher rather than
+  `Default_Handler`. A simulated press via GPIO bit-banging over SWD
+  was attempted and was inconclusive (see the same section) -- whether
+  the ISR actually fires on a real physical edge, whether the
+  dispatch-table lookup behaves correctly under real interrupt timing,
+  and whether `pinMode(BTN1, INPUT_PULLUP)` + `attachInterrupt(BTN1,
+  ..., FALLING)` is the right pull/edge combination for the DK's actual
+  button wiring are all still unconfirmed without physically pressing
+  it.
 
 ## Known limitations (see docs/ARCHITECTURE.md for the full list)
 

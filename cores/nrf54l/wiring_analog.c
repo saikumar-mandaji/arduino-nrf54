@@ -72,6 +72,19 @@ static nrfx_pwm_t s_pwm = NRFX_PWM_INSTANCE(NRF_PWM20);
 static bool s_pwm_began = false;
 static nrf_pwm_values_individual_t s_pwm_duty;
 
+/* nrfx_pwm's IRQ handler is generic/instance-parameterized, same as
+ * nrfx_uarte/nrfx_spim/nrfx_twim's (see the trampoline in
+ * HardwareSerial.cpp for the full explanation and how this was found
+ * on real hardware). PWM's init below also passes a NULL event handler;
+ * unlike the one-shot SPI/I2C transfer case this wasn't independently
+ * re-verified against nrfx_pwm.c's internals, so whether analogWrite()
+ * was actually depending on this vector isn't confirmed either way --
+ * wiring it is the correct, necessary plumbing regardless. */
+void nrfx_pwm_20_irq_handler(void)
+{
+    nrfx_pwm_irq_handler(&s_pwm);
+}
+
 /* top_value from NRFX_PWM_DEFAULT_CONFIG is 1000 -- duty values are
  * 0..1000 internally; analogWrite()'s 0..255 Arduino-style range is
  * scaled up to that on every call. */

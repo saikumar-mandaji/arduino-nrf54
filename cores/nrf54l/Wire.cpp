@@ -9,6 +9,20 @@
 
 static nrfx_twim_t s_twim = NRFX_TWIM_INSTANCE(NRF_TWIM22);
 
+/* nrfx_twim's IRQ handler is generic/instance-parameterized, same as
+ * nrfx_uarte's and nrfx_spim's (see the trampoline in HardwareSerial.cpp
+ * for the full explanation and how this was found on real hardware).
+ * begin() below passes a NULL event handler, and nrfx_twim.c uses the
+ * same NULL-handler-means-blocking-mode pattern confirmed in nrfx_spim.c
+ * (nrfy_twim_rx_start/tx_start pass a non-NULL descriptor for blocking
+ * polling when there's no handler), so I2C transfers were not actually
+ * broken by the missing vector -- but this is still correct/necessary
+ * plumbing for the reasons in SPI.cpp's equivalent comment. */
+extern "C" void nrfx_twim_22_irq_handler(void)
+{
+    nrfx_twim_irq_handler(&s_twim);
+}
+
 TwoWire::TwoWire() : _began(false), _txLength(0), _txAddress(0), _rxLength(0), _rxIndex(0)
 {
 }
