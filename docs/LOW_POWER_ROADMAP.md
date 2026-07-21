@@ -1,13 +1,28 @@
-# Low-power sleep modes: scoping notes (not implemented yet)
+# Low-power sleep modes: scoping notes + System ON idle for delay()
 
 This document records the design pass for adding real low-power sleep
-to this core. Nothing described here is implemented -- `delay()` today
-(`cores/nrf54l/wiring_time.c`) busy-waits by polling `micros()` in a
-tight loop, which holds the CPU (and everything clocked off it) fully
-active for the entire delay. This is the smaller, more tractable
-counterpart to `docs/BLE_ROADMAP.md` -- no precompiled vendor binaries
-involved, everything needed is already in the vendored `nrfx`/CMSIS
-headers.
+to this core, plus the status of the first implemented piece.
+
+**Status (2026-07-21): `delay(ms)` now sleeps via System ON idle
+(WFI + a dedicated GRTC compare channel) instead of busy-waiting.**
+See `cores/nrf54l/wiring_time.c`. This compiles and links cleanly
+against the real `nrfx_grtc` driver source (verified by manually
+replicating the Makefile's build recipe for `Blink` end-to-end), but
+is **not yet hardware-validated** -- next step is halting the CPU over
+SWD mid-`delay()` on a real nRF54L15-DK to confirm it's actually
+sitting in WFI and not spinning, the same technique used to catch the
+GRTC autostart and NULL-pointer bugs documented in
+`docs/VERIFICATION.md`. `delayMicroseconds()` intentionally still
+busy-waits (see the rationale in the `wiring_time.c` file comment) --
+only `delay()`'s millisecond-granularity sleeps get the System ON idle
+treatment, since the interrupt/wake overhead would make short
+`delayMicroseconds()` calls inaccurate.
+
+Everything below this point is the original scoping pass, kept for the
+still-unimplemented System OFF (deep sleep) tier. This is the smaller,
+more tractable counterpart to `docs/BLE_ROADMAP.md` -- no precompiled
+vendor binaries involved, everything needed is already in the vendored
+`nrfx`/CMSIS headers.
 
 ## What the nRF54L15 actually offers
 
@@ -107,11 +122,13 @@ nRF54L15/LM20A). Concretely useful, verified-by-reading-source parts:
 
 ## Concrete next steps
 
-1. Prototype System ON idle first (smaller, self-contained, no new
-   public API needed -- just make `delay()`/an internal idle path
-   sleep instead of busy-wait) and validate on real hardware over SWD
-   the same way GRTC/SPI bugs were found this session: halt the CPU
-   mid-`delay()` and confirm it's actually in a WFE-halted state, not
+1. ~~Prototype System ON idle first~~ **Implemented (compile-verified,
+   not yet hardware-verified)** -- `delay(ms)` now arms a dedicated
+   GRTC compare channel and sleeps in a `while (!s_delay_woken) __WFI();`
+   loop instead of busy-waiting; see the status note at the top of this
+   file. Still need to: validate on real hardware over SWD the same way
+   GRTC/SPI bugs were found earlier in this project -- halt the CPU
+   mid-`delay()` and confirm it's actually in a WFI-halted state, not
    spinning.
 2. Audit each existing peripheral driver (`HardwareSerial`, `SPI`,
    `Wire`, `analogRead`, `analogWrite`, `attachInterrupt`) for sleep

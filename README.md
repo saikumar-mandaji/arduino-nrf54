@@ -112,11 +112,12 @@ use only onboard peripherals).
   paired with an open host stack such as NimBLE -- see
   [`docs/BLE_ROADMAP.md`](docs/BLE_ROADMAP.md) for the scoping notes
   and open questions.
-- **Low-power sleep modes**: not implemented yet. `delay()` currently
-  busy-waits on GRTC rather than entering a real low-power sleep state
-  -- see [`docs/LOW_POWER_ROADMAP.md`](docs/LOW_POWER_ROADMAP.md) for
-  the scoping notes (System ON idle vs. System OFF deep sleep, the
-  real nRF54L15 APIs involved, and concrete next steps).
+- **Low-power sleep modes**: System ON idle is implemented -- `delay(ms)`
+  now sleeps via WFI + a GRTC compare channel instead of busy-waiting
+  (compile/link-verified, not yet confirmed on real hardware). System
+  OFF (deep sleep) is not implemented yet. See
+  [`docs/LOW_POWER_ROADMAP.md`](docs/LOW_POWER_ROADMAP.md) for status
+  and the System OFF scoping notes.
 - **`Wire`/`analogRead`/`analogWrite`/`attachInterrupt`**: implemented
   and compile-tested, but not yet exercised on real hardware.
 - Genuine unresolved hardware mysteries (`Serial` tooling discrepancy,
