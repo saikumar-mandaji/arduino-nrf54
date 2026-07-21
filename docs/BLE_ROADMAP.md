@@ -3,19 +3,25 @@
 This document records the research and initial vendoring work done so
 far toward adding BLE support to this core.
 
-**Status (2026-07-21): the real Nordic SDC + MPSL binaries are vendored
-under `extern/nordic_sdc/`**, **the four application-side glue
-functions MPSL needs to link are implemented**, **the GRTC/MPSL
-ownership question is resolved** (no conflict, by chip design -- a real
-latent channel-mask bug was found and fixed along the way), and **this
-chip's real IRQ vectors are routed to MPSL's exported handlers**
-(`cores/nrf54l/mpsl_glue.c`, gated behind `ARDUINO_NRF54_MPSL_ENABLED`
-since this project has no opt-in BLE library yet -- see "IRQ vector
-routing implemented" below). No BLE functionality is wired up yet -- no
-Arduino API, no HCI bridge, and nothing calls `mpsl_init()`/
-`sdc_init()`/`sdc_enable()` yet, so these vectors are inert in practice
-until that happens (see "Concrete next steps"). This is groundwork, not a
-working BLE stack.
+**Status (2026-07-21): the SDC/MPSL controller bring-up sequence is
+implemented and compile/link-verified end-to-end** -- vendored
+binaries, glue functions, IRQ vector routing, GRTC/MPSL conflict
+resolved, and now `nrf54_mpsl_ble_init()` actually calling `mpsl_init()`
+-> `sdc_init()` -> `sdc_rand_source_register()` (real CRACEN hardware
+entropy) -> `sdc_enable()` (see "mpsl_init()/sdc_init()/sdc_enable()
+bring-up implemented" below). All of it is gated behind
+`ARDUINO_NRF54_MPSL_ENABLED` (undefined by default) since this project
+has no opt-in BLE library yet, and confirmed to add zero cost/regression
+to ordinary sketches when unused.
+
+**What this is NOT**: a working BLE stack, or even hardware-verified.
+No Arduino API, no HCI host, nothing in this repo calls
+`nrf54_mpsl_ble_init()` from anywhere reachable (no example sketch), and
+none of this has been tested on a real nRF54L15-DK yet -- everything
+above is "compiles and links correctly against the real vendored
+binaries," not "runs correctly." See "Concrete next steps" for what's
+still open: real hardware verification, the host-stack design decision
+(Bare Metal S1xx vs. NimBLE+HCI), and the Arduino-facing API itself.
 
 ## Why this isn't a quick add
 
@@ -380,21 +386,96 @@ Still NOT done: nothing calls `mpsl_init()`/`sdc_init()`/
 in practice (never enabled at the NVIC, never fired). That's the next
 step.
 
+## mpsl_init()/sdc_init()/sdc_enable() bring-up implemented (2026-07-21)
+
+`nrf54_mpsl_ble_init()` in `cores/nrf54l/mpsl_glue.c` (gated behind
+`ARDUINO_NRF54_MPSL_ENABLED`, same as the IRQ handlers) now runs the
+full sequence, in the order confirmed from Nordic's own real reference
+(`sdk-nrf`'s `mpsl_init.c`): `mpsl_init()` -> connect/enable
+`RADIO_0`/`GRTC_3`/`TIMER10` at NVIC priority 0 -> `nrfx_cracen_init()`
+-> `sdc_init()` -> `sdc_rand_source_register()` -> `sdc_cfg_set()` (to
+learn the required memory size) -> `sdc_enable()`. Three real pieces
+had to be worked out beyond the IRQ plumbing, each grounded in the
+actual vendored headers rather than guessed:
+
+- **Clock accuracy**: `mpsl_init()` is called with a `NULL` clock
+  config, which per `mpsl.h`'s own doc uses MPSL's RC-oscillator
+  default (250 ppm, confirmed by reading `mpsl_clock.h`'s
+  `MPSL_DEFAULT_CLOCK_ACCURACY_PPM`). This isn't just convenient --
+  `sdc_init()` itself fails with `-NRF_EPERM` unless MPSL's clock
+  accuracy is 500 ppm or better (`sdc.h`'s own doc), and 250 ppm clears
+  that. A board's real external 32kHz crystal would be more accurate
+  and lower-power, but needs board-specific crystal characteristics
+  this core has no place to configure yet -- a real future improvement,
+  not implemented.
+- **Entropy**: `sdc_enable()` fails with `-NRF_EPERM` ("entropy source
+  is not configured") unless `sdc_rand_source_register()` was called
+  first. Wired to this chip's **real CRACEN hardware CSPRNG**
+  (`extern/nrfx`'s `nrfx_cracen_ctr_drbg_random_get()`) -- confirmed
+  `NRF_CRACEN_HAS_CRYPTOMASTER` is actually `1` for this chip by
+  compiling a check against the real vendored headers (not assumed),
+  and confirmed `nrfx_cracen.c` itself compiles clean standalone with
+  this core's flags before committing to using it. This is real
+  hardware entropy, not a placeholder -- matches the security
+  requirements `sdc_soc.h`'s own doc references.
+- **Memory sizing**: `sdc_enable()` needs a caller-allocated, 8-byte-
+  aligned buffer whose size is only known at runtime, from
+  `sdc_cfg_set()`'s return value (this is SDC's own documented pattern,
+  not a fixed constant that could go stale across SDC versions).
+  Queried with `SDC_DEFAULT_RESOURCE_CFG_TAG` + `SDC_CFG_TYPE_NONE` and
+  no prior config calls -- the minimal baseline size, deliberately not
+  configuring a specific number of central/peripheral links here, since
+  that's a real design decision belonging with the future Arduino-facing
+  API (step 6 below), not something to guess as bring-up plumbing.
+  `malloc()` is used for the buffer -- this core's `syscalls.c` already
+  implements `_sbrk`, so this isn't introducing untested capability --
+  checked for both allocation failure and 8-byte alignment rather than
+  assumed.
+
+**The low-priority IRQ (`SWI00_IRQn = 28`, matching Nordic's own
+documented default for nRF54L)** only sets a flag in its handler;
+`nrf54_mpsl_process()` does the real (potentially slow,
+"at least a few 100 ms" per `mpsl_low_priority_process()`'s own doc)
+work outside interrupt context. This mirrors what Zephyr's reference
+does (defer out of the ISR) without inventing a task/work-queue system
+this bare-metal core doesn't have -- but **nothing currently calls
+`nrf54_mpsl_process()`**; whether it belongs in `main.cpp`'s `while (1)
+{ loop(); }` automatically (so sketches don't have to remember it) is a
+real open design question for the future Arduino BLE API, not decided
+here.
+
+**Verified for real, both directions:**
+- Full real link (not just partial/`-r`) of a complete `Blink`-style
+  build against the real vendored `libsoftdevice_controller_multirole.a`
+  + `libmpsl.a` + `libmpsl_fem_common.a` + `nrfx_cracen.c` + real libc
+  (`malloc` genuinely resolved from newlib), with
+  `-DARDUINO_NRF54_MPSL_ENABLED` -- succeeds, producing a real `.elf`
+  (33768 bytes text, up from ~19744 without BLE, reflecting the actual
+  linked SDC/MPSL code, not just stub symbols).
+- Rebuilt the same `Blink` with the flag *undefined* (the default) --
+  identical size to before this change (19744 bytes text), confirming
+  zero regression for ordinary sketches.
+
+**NOT hardware-verified.** Build-and-link success is not the same as
+working -- `mpsl_init()`'s LFCLK startup, CRACEN's actual entropy
+behavior, and `sdc_enable()`'s real behavior all need confirming on a
+real nRF54L15-DK over SWD, the same discipline used for every other
+peripheral in this core (`docs/VERIFICATION.md`). Nothing calls
+`nrf54_mpsl_ble_init()` from anywhere reachable yet either (no example
+sketch, no Arduino API) -- this is real, linkable bring-up code, not a
+usable BLE feature.
+
 ## Concrete next steps
 
 1. ~~Implement the four glue functions~~ **Done** -- see above.
 2. ~~Route this chip's real IRQ vectors~~ **Done** -- see "IRQ vector
    routing implemented" above.
-3. Get `mpsl_init()` + `sdc_init()` + `sdc_enable()` actually running on
-   real hardware (build-and-link success is not the same as working --
-   this needs the same over-SWD verification discipline used for every
-   other peripheral in this core, see `docs/VERIFICATION.md`). Confirmed
-   call ordering from the same real reference: `mpsl_init()` is called
-   *first*; only afterward are `RADIO_0`/`GRTC_3`/`TIMER10` connected and
-   enabled at the NVIC, at priority 0 (`MPSL_HIGH_IRQ_PRIORITY`) -- this
-   core's `main.cpp` (which already runs `nrf54_core_time_init()` before
-   `setup()`) is the natural place for this sequence, gated behind
-   `ARDUINO_NRF54_MPSL_ENABLED` and only once `sdc_enable()` needs it.
+3. ~~Get `mpsl_init()` + `sdc_init()` + `sdc_enable()` running~~
+   **Compile/link-verified** -- see "mpsl_init()/sdc_init()/sdc_enable()
+   bring-up implemented" above. Real hardware verification (call
+   `nrf54_mpsl_ble_init()` from a test sketch, halt over SWD, confirm it
+   actually returns `true` and doesn't fault) is still needed before
+   this is more than "links cleanly."
 4. Evaluate Nordic's own **Bare Metal S115/S145** SoftDevice-style API
    (see reference below) as a possible shortcut for the *host* side
    before building a NimBLE+HCI bridge from scratch -- it sits on top
