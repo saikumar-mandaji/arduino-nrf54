@@ -1,9 +1,18 @@
-# BLE: scoping notes (not implemented yet)
+# BLE: scoping notes + vendoring status
 
-This document records the research done so far into adding BLE support
-to this core. Nothing described here is implemented -- this is a design
-scoping pass, written so the next work session (or a contributor) isn't
-starting from zero.
+This document records the research and initial vendoring work done so
+far toward adding BLE support to this core.
+
+**Status (2026-07-21): the real Nordic SDC + MPSL binaries are now
+vendored under `extern/nordic_sdc/`** (fetched directly from Nordic's
+public `nrfconnect/sdk-nrfxlib` GitHub repo -- see
+`extern/nordic_sdc/VERSION.md` for exact commit provenance), and a
+minimal test translation unit calling `sdc_init()`/`mpsl_init()` was
+compiled and linked against them with this core's real toolchain flags,
+enumerating the **exact** application-side glue required (see "Linker
+findings" below). No BLE functionality is wired up yet -- no Arduino
+API, no HCI bridge, no IRQ vectors routed. This is groundwork, not a
+working BLE stack.
 
 ## Why this isn't a quick add
 
@@ -125,39 +134,126 @@ Zephyr's.
   Nordic Bare Metal S1xx API above turns out not to fit this core's
   existing Arduino-facing design.
 
-## Concrete open questions for the next session
+## Vendoring done, and what was verified (2026-07-21)
 
-1. ~~Confirm the actual Nordic license text in `sdk-nrfxlib` permits
-   redistributing the compiled SDC/MPSL `.a` files~~ **Resolved** --
-   see the `lolren/nrf54-arduino-core` finding above:
-   `LicenseRef-Nordic-5-Clause` permits binary redistribution.
-2. ~~Get a real SDC+MPSL prebuilt lib for the nRF54L15 in hand and
-   confirm it links against a non-Zephyr, non-NCS build~~ **Largely
-   resolved by existence proof** -- `lolren/nrf54-arduino-core` vendors
-   exactly this and (per its release history) ships working builds.
-   Still need to independently obtain the same libs ourselves (they're
-   in `sdk-nrfxlib`, not this repo's own IP) and confirm they link
-   against *our* build, not just trust that theirs does.
-3. Evaluate Nordic's own **Bare Metal S115/S145** option (see reference
-   above) as a possible shortcut before building a NimBLE+HCI bridge --
-   check its toolchain assumptions and license against this core's
-   actual GCC/Makefile build.
-4. Scope NimBLE's host-only build flags/config needed to disable its
-   built-in nRF52 controller and run purely over HCI (still needed if
-   the Bare Metal S1xx option doesn't fit).
-5. Design the in-process HCI transport shim between NimBLE-host and
-   SDC (still needed if going the NimBLE route instead of S1xx).
-6. Only after the above are unblocked: design the actual Arduino-facing
-   API (likely modeled on `ArduinoBLE`'s API surface, for familiarity
-   with existing Arduino BLE code, similar to how this core's other
-   peripherals mirror standard Arduino APIs).
+Fetched directly from `nrfconnect/sdk-nrfxlib` (Nordic's own public
+repo, not copied from `lolren/nrf54-arduino-core` or any other
+third party -- see `extern/nordic_sdc/VERSION.md` for exact commit
+SHAs) into `extern/nordic_sdc/`:
 
-## Low-power sleep modes (tracked separately, smaller scope)
+- `softdevice_controller/lib/libsoftdevice_controller_multirole.a`
+  (hard-float ABI, matching this core's `-mfloat-abi=hard
+  -mfpu=fpv5-sp-d16` in the root `Makefile` -- soft-float, which is
+  what `lolren/nrf54-arduino-core` uses, would **not** have linked
+  correctly against this project's existing float ABI).
+- `mpsl/lib/libmpsl.a` and `mpsl/lib/libmpsl_fem_common.a` (same
+  hard-float ABI). `libmpsl_fem_common.a` turned out to be required
+  even without an external front-end module/PA chip -- see the linker
+  findings below; it's not just for boards with an external FEM.
+- The public headers (`sdc*.h`, `mpsl*.h`) and the real
+  `LicenseRef-Nordic-5-Clause` license files, unmodified.
 
-Not yet researched in depth. Currently `delay()` busy-waits on GRTC
-compare events rather than entering any real sleep state. The nRF54L15
-supports multiple System OFF/ON idle states via its power management
-unit; adding a real low-power `delay()`/idle path is a smaller, more
-tractable project than BLE and doesn't have the "precompiled vendor
-blob" complication -- next session should scope this before BLE if a
-smaller, shippable win is wanted first.
+### Linker findings (ground truth, not assumed)
+
+A minimal test file calling `mpsl_init()` and `sdc_init()` was compiled
+with this core's actual flags (`cores/nrf54l` on the include path, same
+`-mcpu=cortex-m33 -mfloat-abi=hard -mfpu=fpv5-sp-d16`) and partially
+linked (`ld -r`) against the vendored archives to see exactly what
+undefined symbols remain -- i.e. exactly what this core has to
+implement, with no guessing:
+
+```
+mpsl_fem_caps_get                        )
+mpsl_fem_disable                         )
+mpsl_fem_enable                          )  resolved by adding
+mpsl_fem_lna_configuration_clear         )  libmpsl_fem_common.a --
+mpsl_fem_lna_configuration_set           )  no application code
+mpsl_fem_pa_configuration_clear          )  needed for these.
+mpsl_fem_pa_configuration_set            )
+mpsl_fem_pa_power_control_set            )
+mpsl_fem_tx_power_split                  )
+mpsl_fem_utils_available_cc_channels_cache )
+
+mpsl_hwres_dppi_channel_alloc            -- app must implement: allocate
+                                             a DPPI channel on the given
+                                             DPPIC instance (mirrors the
+                                             nrfx_gpiote_channel_alloc()
+                                             pattern already used in
+                                             cores/nrf54l/wiring_interrupts.c,
+                                             but for nrfx's DPPI channel
+                                             allocator instead).
+mpsl_hwres_ppib_channel_alloc            -- app must implement: same
+                                             idea, for PPIB (PPI Bridge)
+                                             channels.
+mpsl_low_latency_acquire_callback        -- app must implement: called
+                                             by MPSL before time-critical
+                                             radio work; per mpsl.h,
+                                             typically drops NVM/flash
+                                             access latency for the
+                                             duration.
+mpsl_low_latency_release_callback        -- app must implement: the
+                                             matching release, called
+                                             after time-critical work
+                                             (MPSL may skip intermediate
+                                             releases for back-to-back
+                                             events -- must tolerate
+                                             that, e.g. by counting
+                                             acquires/releases rather
+                                             than treating them as
+                                             strictly paired).
+```
+
+That's the **entire** application-side C function surface required to
+satisfy the linker -- no missing libc, no missing nrfx symbols beyond
+what this core already has. Confirmed via `arm-none-eabi-nm -u` on the
+partially-linked object, not assumed from documentation.
+
+Also confirmed via `nm` on `libmpsl.a` itself: `MPSL_IRQ_RADIO_Handler`,
+`MPSL_IRQ_RTC0_Handler`, `MPSL_IRQ_TIMER0_Handler`, and
+`MPSL_IRQ_CLOCK_Handler` are **defined** (exported) by the library, not
+things this core needs to write -- the remaining work there is routing
+this chip's real vector-table entries to call them (the same
+`#define X_IRQHandler Y_IRQHandler`-style aliasing this project's
+`nrfx_mdk_fixups.h`/`nrfx_irqs_*` headers already use for GRTC, just
+pointed at MPSL's exported names instead of a locally-defined one).
+
+Also confirmed from `mpsl_hwres.h`: on this chip family (`LUMOS_XXAA`,
+which covers nRF54L15), **MPSL claims `NRF_TIMER10` exclusively**
+(`#define MPSL_TIMER0 NRF_TIMER10`) -- this core's existing peripheral
+drivers don't currently touch TIMER10, but this needs to stay true; any
+future driver work must treat TIMER10 as MPSL/BLE-reserved once BLE is
+wired up.
+
+## Concrete next steps
+
+1. Implement the four glue functions enumerated above
+   (`mpsl_hwres_dppi_channel_alloc`, `mpsl_hwres_ppib_channel_alloc`,
+   `mpsl_low_latency_acquire_callback`/`_release_callback`) -- these
+   are now fully scoped, not open questions.
+2. Route this chip's real IRQ vectors (RADIO, the GRTC instance MPSL
+   uses as its RTC0, TIMER10, and whichever clock/power IRQ maps to
+   `MPSL_IRQ_CLOCK_Handler`) to the exported `MPSL_IRQ_*_Handler`
+   functions, following the existing `nrfx_irqs_nrf54l15_application.h`
+   aliasing pattern.
+3. Get `mpsl_init()` + `sdc_init()` + `sdc_enable()` actually running on
+   real hardware (build-and-link success is not the same as working --
+   this needs the same over-SWD verification discipline used for every
+   other peripheral in this core, see `docs/VERIFICATION.md`).
+4. Evaluate Nordic's own **Bare Metal S115/S145** SoftDevice-style API
+   (see reference below) as a possible shortcut for the *host* side
+   before building a NimBLE+HCI bridge from scratch -- it sits on top
+   of the same SDC/MPSL vendored above, so steps 1-3 aren't wasted work
+   either way.
+5. If the Bare Metal S1xx option doesn't fit this core's design: scope
+   NimBLE's host-only build flags/config needed to disable its built-in
+   nRF52 controller and run purely over HCI, then design the
+   in-process HCI transport shim between NimBLE-host and SDC.
+6. Only after the above: design the actual Arduino-facing API (likely
+   modeled on `ArduinoBLE`'s API surface for familiarity, similar to how
+   this core's other peripherals mirror standard Arduino APIs).
+
+## Low-power sleep modes (tracked separately)
+
+See `docs/LOW_POWER_ROADMAP.md` -- System ON idle for `delay()` is now
+implemented (compile/link-verified, not yet hardware-verified); System
+OFF deep sleep is still just scoped.
