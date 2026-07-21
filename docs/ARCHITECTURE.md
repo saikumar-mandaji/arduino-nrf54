@@ -93,6 +93,52 @@ lives in, and is still updated via, the submodule. The plain `Makefile`
 build does not need these wrappers -- it lists the real `extern/nrfx` paths
 directly.
 
+## IRQ vector wiring: reusing Nordic's own vector table, not hand-writing one
+
+This core's startup file (`cores/nrf54l/_startup_nrf54l15_application.S`)
+`#include`s Nordic's own vendored MDK startup assembly
+(`extern/nrfx/bsp/stable/mdk/nrf54l/nrf54l15/gcc_startup_nrf54l15_application.S`)
+verbatim, rather than hand-writing a vector table. Routing a peripheral
+driver's generic ISR (e.g. `nrfx_grtc_irq_handler()`) to the specific
+numbered vector Nordic's table expects (e.g. `GRTC_2_IRQHandler`) is
+done entirely via nrfx's own `#define`-chain in
+`extern/nrfx/bsp/stable/soc/irqs/nrfx_irqs_nrf54l15_application.h` /
+`nrfx_mdk_fixups.h` -- e.g. `#define nrfx_grtc_irq_handler
+GRTC_IRQHandler` and `#define GRTC_IRQHandler GRTC_2_IRQHandler`,
+resolved entirely by the preprocessor before the driver source is even
+compiled. No project code hand-maintains a vector table or per-peripheral
+IRQ handler name.
+
+This was compared (2026-07-21) against `lolren/nrf54-arduino-core`'s
+approach, which hand-writes its own ~500-line `startup_nrf54l15.S` with
+the entire nRF54L15 vector table transcribed by hand, and hardcodes a
+specific peripheral-mode name at each shared serial-fabric vector slot
+(e.g. the vector table entry at the SERIAL21 fabric instance is named
+`SPIM21_IRQHandler`, not a mode-agnostic name). This appears to have
+introduced a real bug: their file also separately defines a
+`TWIM21_IRQHandler` weak stub (for their I2C/Wire driver's ISR
+presumably to override), but the vector table itself never references
+that name at all -- only `SPIM21_IRQHandler`. If their I2C driver's real
+ISR is named to match that stub, it would silently never be called by
+hardware, since the vector table points at a different symbol name for
+that slot. (Not independently confirmed against their actual TWIM
+driver source -- flagged as a likely bug from the vector-table/stub
+mismatch alone, not verified end-to-end on their hardware.)
+
+nrfx's own official mapping avoids this class of bug by construction:
+each shared serial-fabric instance's vector name is generic
+(`SERIAL21_IRQHandler`, not `SPIM21_IRQHandler`), and *every* possible
+mode driver for that instance (`nrfx_spim_21_irq_handler`,
+`nrfx_twim_21_irq_handler`, `nrfx_uarte_21_irq_handler`, etc. --
+confirmed by reading `nrfx_irqs_nrf54l15_application.h` directly)
+`#define`s down to that same one name, so whichever driver is actually
+compiled in for that instance is automatically the one wired to the
+vector table -- there's no separate hand-maintained name to fall out of
+sync. Combined with reusing Nordic's own vetted 270-entry vector table
+instead of a hand transcription, this is judged the more robust
+approach and was kept as-is; no code change resulted from this
+comparison.
+
 ## Timing: GRTC
 
 `millis()`/`micros()`/`delay()` are built on the nRF54 series' GRTC

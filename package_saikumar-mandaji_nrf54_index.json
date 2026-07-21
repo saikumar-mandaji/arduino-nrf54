@@ -12,24 +12,88 @@
         {
           "name": "Nordic nRF54L (arduino-nrf54)",
           "architecture": "nrf54l",
-          "version": "0.1.0",
+          "version": "0.2.0",
           "category": "Contributed",
-          "url": "https://github.com/saikumar-mandaji/arduino-nrf54/releases/download/v0.1.0/arduino-nrf54-0.1.0.zip",
-          "archiveFileName": "arduino-nrf54-0.1.0.zip",
-          "checksum": "SHA-256:2cb1ac2e6c321c57e10b9adc4973022bf4338d0410271e88581e47fb497ca75d",
-          "size": "2513860",
+          "url": "https://github.com/saikumar-mandaji/arduino-nrf54/releases/download/v0.2.0/arduino-nrf54-0.2.0.zip",
+          "archiveFileName": "arduino-nrf54-0.2.0.zip",
+          "checksum": "SHA-256:415c3307610dc765921c4eaf1867ff5f1f3340af60a9975ba88ccc65be7b7273",
+          "size": "2526464",
           "help": {
             "online": "https://github.com/saikumar-mandaji/arduino-nrf54/blob/main/docs/GUIDE.md"
           },
           "boards": [
             {
               "name": "Nordic nRF54L15-DK"
+            },
+            {
+              "name": "Seeed Studio XIAO nRF54L15"
+            },
+            {
+              "name": "Ezurio BL54L15 DVK"
+            },
+            {
+              "name": "Raytac AN54LQ-DB-15"
             }
           ],
-          "toolsDependencies": []
+          "toolsDependencies": [
+            {
+              "packager": "saikumar-mandaji",
+              "name": "arm-none-eabi-gcc",
+              "version": "14.2.1"
+            }
+          ]
         }
       ],
-      "tools": []
+      "tools": [
+        {
+          "name": "arm-none-eabi-gcc",
+          "version": "14.2.1",
+          "systems": [
+            {
+              "host": "i686-mingw32",
+              "url": "https://github.com/saikumar-mandaji/arduino-nrf54/releases/download/v0.2.0/arm-gnu-toolchain-14.2.rel1-mingw-w64-i686-arm-none-eabi-repackaged.zip",
+              "archiveFileName": "arm-gnu-toolchain-14.2.rel1-mingw-w64-i686-arm-none-eabi-repackaged.zip",
+              "checksum": "SHA-256:272e0234ae608b851e593b30ee31909fff2b3ddccb946b1ba6eef433d442bb3f",
+              "size": "325144552"
+            },
+            {
+              "host": "x86_64-mingw32",
+              "url": "https://github.com/saikumar-mandaji/arduino-nrf54/releases/download/v0.2.0/arm-gnu-toolchain-14.2.rel1-mingw-w64-i686-arm-none-eabi-repackaged.zip",
+              "archiveFileName": "arm-gnu-toolchain-14.2.rel1-mingw-w64-i686-arm-none-eabi-repackaged.zip",
+              "checksum": "SHA-256:272e0234ae608b851e593b30ee31909fff2b3ddccb946b1ba6eef433d442bb3f",
+              "size": "325144552"
+            },
+            {
+              "host": "x86_64-pc-linux-gnu",
+              "url": "https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi.tar.xz",
+              "archiveFileName": "arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi.tar.xz",
+              "checksum": "SHA-256:62a63b981fe391a9cbad7ef51b17e49aeaa3e7b0d029b36ca1e9c3b2a9b78823",
+              "size": "149739784"
+            },
+            {
+              "host": "aarch64-linux-gnu",
+              "url": "https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-aarch64-arm-none-eabi.tar.xz",
+              "archiveFileName": "arm-gnu-toolchain-14.2.rel1-aarch64-arm-none-eabi.tar.xz",
+              "checksum": "SHA-256:87330bab085dd8749d4ed0ad633674b9dc48b237b61069e3b481abd364d0a684",
+              "size": "151967360"
+            },
+            {
+              "host": "x86_64-apple-darwin",
+              "url": "https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-darwin-x86_64-arm-none-eabi.tar.xz",
+              "archiveFileName": "arm-gnu-toolchain-14.2.rel1-darwin-x86_64-arm-none-eabi.tar.xz",
+              "checksum": "SHA-256:2d9e717dd4f7751d18936ae1365d25916534105ebcb7583039eff1092b824505",
+              "size": "145118692"
+            },
+            {
+              "host": "arm64-apple-darwin",
+              "url": "https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-darwin-arm64-arm-none-eabi.tar.xz",
+              "archiveFileName": "arm-gnu-toolchain-14.2.rel1-darwin-arm64-arm-none-eabi.tar.xz",
+              "checksum": "SHA-256:c7c78ffab9bebfce91d99d3c24da6bf4b81c01e16cf551eb2ff9f25b9e0a3818",
+              "size": "134812148"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

@@ -1,12 +1,22 @@
 name=Nordic nRF54L (arduino-nrf54)
-version=0.1.0
+version=0.2.0
 
-# Requires arm-none-eabi-gcc/g++/objcopy/size on PATH. This core does not
-# bundle/manage the toolchain via Arduino's package system -- install the
-# ARM GNU Toolchain yourself (https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
-# and make sure its bin/ directory is on PATH. compiler.path is
-# intentionally empty so the recipes below resolve against PATH.
-compiler.path=
+# Installed via Arduino Boards Manager's own tool-dependency system (see
+# package_saikumar-mandaji_nrf54_index.json's "toolsDependencies" /
+# "tools" entries) -- Boards Manager downloads, verifies (SHA-256), and
+# extracts the real ARM GNU Toolchain 14.2.rel1 the first time this
+# platform is installed, the same way arduino-esp32 bundles its Xtensa
+# GCC. Users installing via Boards Manager do NOT need to install
+# arm-none-eabi-gcc themselves. compiler.path below resolves to that
+# managed copy; {runtime.tools.arm-none-eabi-gcc-14.2.1.path} is filled
+# in by arduino-cli/the IDE at build time based on the toolsDependencies
+# version above.
+#
+# Building via the plain Makefile (contributors, CI) does not go through
+# this file at all and still expects arm-none-eabi-gcc/g++/objcopy/size
+# on PATH or TOOLCHAIN_PREFIX set -- see the Makefile's own header
+# comment and README.md's "Build from source" section.
+compiler.path={runtime.tools.arm-none-eabi-gcc-14.2.1.path}/bin/
 compiler.c.cmd=arm-none-eabi-gcc
 compiler.c.flags=-c -mcpu={build.mcu} -mthumb {build.float-abi} {build.fpu} -std=gnu11 -Wall -O1 -ffunction-sections -fdata-sections -MMD
 

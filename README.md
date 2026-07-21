@@ -47,21 +47,40 @@ Manager package -- no manual cloning or submodule setup required:
    ```
 3. Open **Tools > Board > Boards Manager**, search for `nrf54l`, and
    install "Nordic nRF54L (arduino-nrf54)".
-4. Select **Tools > Board > Nordic nRF54L15-DK**, pick the board's
-   serial/SWD port, and upload like any other Arduino board.
+4. Select **Tools > Board** and pick your board: **Nordic nRF54L15-DK**,
+   **Seeed Studio XIAO nRF54L15**, **Ezurio BL54L15 DVK**, or **Raytac
+   AN54LQ-DB-15**. Pick the board's serial/SWD port and upload like any
+   other Arduino board.
 
-**One thing Boards Manager does *not* install for you:** the
-`arm-none-eabi-gcc`/`g++`/`objcopy` toolchain used to actually compile
-sketches. Install the [ARM GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
-and make sure it's on your `PATH` before building. Flashing real
-hardware also needs Nordic's `nrfutil` (`winget install
+**The toolchain is installed for you.** Boards Manager downloads the
+real ARM GNU Toolchain 14.2.rel1 (`arm-none-eabi-gcc`/`g++`/`objcopy`)
+automatically as a tool dependency the first time you install this
+platform, the same mechanism ESP32's Arduino core uses for its own
+compiler. On Linux and macOS (x86_64 and ARM64) this downloads the
+official archive straight from
+[developer.arm.com](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads),
+checksummed (SHA-256) against a copy independently downloaded and
+hashed for this project. On Windows it downloads a **repackaged mirror
+hosted in this project's own GitHub Releases** instead of ARM's raw
+archive -- ARM's official Windows `.zip` extracts to multiple top-level
+folders instead of one, which Arduino's tool installer requires (this
+was caught by actually testing a fresh install, not assumed); the
+mirror is the identical, unmodified toolchain contents, just re-zipped
+with a single wrapping folder. You do **not** need to install
+`arm-none-eabi-gcc` yourself for this install path. Flashing real
+hardware still needs Nordic's `nrfutil` separately (`winget install
 NordicSemiconductor.nrfutil`, then `nrfutil install device`) -- see
 `docs/hardware/BOM.md` for details.
 
-This flow was verified end-to-end: `arduino-cli core update-index` +
-`core install saikumar-mandaji:nrf54l` against the real published
-package index and GitHub release, followed by a real compile
-(`Blink`, 7904 bytes) against the genuinely-installed copy.
+This flow was verified end-to-end for real, with the pre-existing
+manual toolchain removed from `PATH` entirely so there was no way to
+silently pass by falling back to it: fresh `arduino-cli core
+update-index` + `core install saikumar-mandaji:nrf54l` against a
+locally-served copy of this exact release, followed by a real compile
+of `Blink` against **all four supported boards** (nRF54L15-DK, XIAO
+nRF54L15, Ezurio BL54L15 DVK, Raytac AN54LQ-DB-15), using only the
+Boards-Manager-downloaded toolchain, and a real GitHub Release/package
+index update-index round trip against the published v0.2.0 release.
 
 ### Build from source (for contributors)
 
