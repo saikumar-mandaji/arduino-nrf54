@@ -127,13 +127,15 @@ use only onboard peripherals).
 
 - **BLE**: not exposed to sketches yet. Nordic's real SoftDevice
   Controller + MPSL binaries (from `sdk-nrfxlib`) are vendored under
-  `extern/nordic_sdc/`, the application-side glue functions MPSL needs
-  to link (`cores/nrf54l/mpsl_glue.c`) are implemented and verified with
-  a real zero-undefined-symbols link, and the once-open question of
-  whether MPSL's GRTC use conflicts with this core's own
-  `millis()`/`delay()` is resolved (it doesn't -- they're on separate
-  GRTC channels and separate interrupt lines by chip design; a related
-  latent channel-mask bug was found and fixed in the process). See
+  `extern/nordic_sdc/`; the application-side glue functions MPSL needs
+  to link are implemented; the once-open question of whether MPSL's
+  GRTC use conflicts with this core's own `millis()`/`delay()` is
+  resolved (it doesn't, by chip design); and this chip's real IRQ
+  vectors (RADIO, GRTC, TIMER10, clock) are routed to MPSL's exported
+  handlers in `cores/nrf54l/mpsl_glue.c`, gated behind a build flag
+  (`ARDUINO_NRF54_MPSL_ENABLED`) so ordinary sketches that don't use
+  BLE keep building normally. Nothing calls `mpsl_init()`/`sdc_init()`
+  yet, so none of this is reachable from a sketch. See
   [`docs/BLE_ROADMAP.md`](docs/BLE_ROADMAP.md) for status and the
   concrete next steps.
 - **Low-power sleep modes**: System ON idle is implemented -- `delay(ms)`

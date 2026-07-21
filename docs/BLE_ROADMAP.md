@@ -5,15 +5,16 @@ far toward adding BLE support to this core.
 
 **Status (2026-07-21): the real Nordic SDC + MPSL binaries are vendored
 under `extern/nordic_sdc/`**, **the four application-side glue
-functions MPSL needs to link are implemented** in
-`cores/nrf54l/mpsl_glue.c` (confirmed by a real, zero-undefined-symbols
-link against the vendored archives), and **the GRTC/MPSL ownership
-question is resolved** -- see "GRTC/MPSL conflict: resolved" below: no
-conflict exists, by chip design, and a real latent channel-mask bug was
-found and fixed along the way. No BLE functionality is wired up yet --
-no Arduino API, no HCI bridge, no IRQ vectors routed yet (now unblocked
-implementation work, not an open question -- see "Concrete next
-steps"). This is groundwork, not a
+functions MPSL needs to link are implemented**, **the GRTC/MPSL
+ownership question is resolved** (no conflict, by chip design -- a real
+latent channel-mask bug was found and fixed along the way), and **this
+chip's real IRQ vectors are routed to MPSL's exported handlers**
+(`cores/nrf54l/mpsl_glue.c`, gated behind `ARDUINO_NRF54_MPSL_ENABLED`
+since this project has no opt-in BLE library yet -- see "IRQ vector
+routing implemented" below). No BLE functionality is wired up yet -- no
+Arduino API, no HCI bridge, and nothing calls `mpsl_init()`/
+`sdc_init()`/`sdc_enable()` yet, so these vectors are inert in practice
+until that happens (see "Concrete next steps"). This is groundwork, not a
 working BLE stack.
 
 ## Why this isn't a quick add
@@ -322,30 +323,78 @@ BLE" question this document previously flagged as blocking IRQ vector
 work. It does **not** mean IRQ vector routing is done -- see the next
 step.
 
+## IRQ vector routing implemented (2026-07-21)
+
+`cores/nrf54l/mpsl_glue.c` now defines the four vector-forwarding
+functions, confirmed against Nordic's own real reference integration
+source (`nrfconnect/sdk-nrf`, `subsys/mpsl/init/include/mpsl_init_soc.h`
+and `subsys/mpsl/init/mpsl_init.c`, plus
+`drivers/mpsl/clock_control/nrfx_clock_mpsl.c` for the clock vector),
+not guessed:
+
+- `RADIO_0_IRQHandler()` -> `MPSL_IRQ_RADIO_Handler()`. **`RADIO_1` is
+  deliberately untouched** -- confirmed from `mpsl_init_soc.h` that
+  `MPSL_RADIO_IRQn = RADIO_0_IRQn` only.
+- `GRTC_3_IRQHandler()` -> `MPSL_IRQ_RTC0_Handler()` (`MPSL_RTC_IRQn`).
+- `TIMER10_IRQHandler()` -> `MPSL_IRQ_TIMER0_Handler()` (`MPSL_TIMER_IRQn`).
+- `CLOCK_POWER_IRQHandler()` -> `MPSL_IRQ_CLOCK_Handler()` (found in a
+  different file than the other three -- sdk-nrf's own clock control
+  driver, not `mpsl_init.c`).
+
+Confirmed from the same reference that each real Zephyr wrapper does
+*only* the one forwarding call, no extra logic -- so a plain one-line
+forwarding function is the correct, complete implementation, not a
+simplification of something more involved.
+
+**A second real bug was caught by actually linking, the same way the
+first pass caught the missing glue functions**: unlike
+`mpsl_hwres_dppi_channel_alloc()` and friends (only reachable by a
+function *call*, so `--gc-sections` strips them from builds that never
+call in), these four `*_IRQHandler` functions are referenced by the
+vector table itself (`g_pfnVectors` in the vendored MDK startup `.S`,
+which is never garbage-collected) the moment they're *defined* --
+regardless of whether anything calls them. Defining them
+unconditionally in `mpsl_glue.c` (which lives in `cores/nrf54l/` and is
+therefore compiled into every sketch) broke a plain `Blink` build with
+"undefined reference to `MPSL_IRQ_RADIO_Handler`" and friends, since
+Blink correctly never links `libmpsl.a`. Fixed by gating all four
+behind `#if defined(ARDUINO_NRF54_MPSL_ENABLED)` (undefined by
+default) -- this project has no "opt-in library" mechanism for BLE yet
+(a real Arduino library, only compiled when a sketch `#include`s it,
+would be the cleaner long-term home for this instead of a macro gate in
+`cores/nrf54l/`; revisit once BLE has an actual Arduino-facing library).
+
+**Verified both directions for real:**
+- Rebuilt `Blink` with the flag *undefined* (the default) -- links
+  clean, same size as before, confirming no regression for ordinary
+  sketches.
+- Compiled `mpsl_glue.c` with the flag *defined*, partially linked
+  against the real vendored SDC + MPSL + MPSL-FEM-common archives, and
+  confirmed **zero undefined symbols** via `arm-none-eabi-nm -u`.
+  Disassembled the result and confirmed `RADIO_0_IRQHandler` genuinely
+  calls into the real, linked `MPSL_IRQ_RADIO_Handler` address -- not
+  just "links," actually wired to the right function.
+
+Still NOT done: nothing calls `mpsl_init()`/`sdc_init()`/
+`sdc_enable()` anywhere in this repo, so these vectors are still inert
+in practice (never enabled at the NVIC, never fired). That's the next
+step.
+
 ## Concrete next steps
 
 1. ~~Implement the four glue functions~~ **Done** -- see above.
-2. Route this chip's real IRQ vectors (RADIO, GRTC_3_IRQn for MPSL's
-   RTC0, TIMER10, and whichever clock/power IRQ maps to
-   `MPSL_IRQ_CLOCK_Handler`) to the exported `MPSL_IRQ_*_Handler`
-   functions, following the existing `nrfx_irqs_nrf54l15_application.h`
-   aliasing pattern -- the GRTC-conflict question above is resolved, so
-   this is now just implementation work, not blocked on an open
-   question. Concretely: `GRTC_3_IRQHandler` needs to be aliased/defined
-   to call `MPSL_IRQ_RTC0_Handler()` (a name this core doesn't currently
-   touch, so this is additive, not a change to the existing
-   `GRTC_2_IRQHandler` routing), and similarly for `RADIO_0/1_IRQHandler`,
-   `TIMER10_IRQHandler`, and the clock/power vector. Still needs: (a)
-   confirming `mpsl_init()` must actually be called before these IRQs
-   fire meaningfully (per the integration notes, MPSL enables its own
-   reserved interrupts internally), and (b) working out where in this
-   core's startup sequence `mpsl_init()`/`sdc_init()`/`sdc_enable()`
-   should be called from (main.cpp, before `setup()`, similar to how
-   `nrf54_core_time_init()` runs before `setup()` today).
+2. ~~Route this chip's real IRQ vectors~~ **Done** -- see "IRQ vector
+   routing implemented" above.
 3. Get `mpsl_init()` + `sdc_init()` + `sdc_enable()` actually running on
    real hardware (build-and-link success is not the same as working --
    this needs the same over-SWD verification discipline used for every
-   other peripheral in this core, see `docs/VERIFICATION.md`).
+   other peripheral in this core, see `docs/VERIFICATION.md`). Confirmed
+   call ordering from the same real reference: `mpsl_init()` is called
+   *first*; only afterward are `RADIO_0`/`GRTC_3`/`TIMER10` connected and
+   enabled at the NVIC, at priority 0 (`MPSL_HIGH_IRQ_PRIORITY`) -- this
+   core's `main.cpp` (which already runs `nrf54_core_time_init()` before
+   `setup()`) is the natural place for this sequence, gated behind
+   `ARDUINO_NRF54_MPSL_ENABLED` and only once `sdc_enable()` needs it.
 4. Evaluate Nordic's own **Bare Metal S115/S145** SoftDevice-style API
    (see reference below) as a possible shortcut for the *host* side
    before building a NimBLE+HCI bridge from scratch -- it sits on top

@@ -1,16 +1,18 @@
 /**
  * @file mpsl_glue.c
  * @brief Application-side glue functions required to link Nordic's
- * vendored MPSL (extern/nordic_sdc/mpsl) -- see docs/BLE_ROADMAP.md for
- * how these four functions were identified: a minimal test file calling
- * mpsl_init()/sdc_init() was linked against the real vendored archives
- * and `arm-none-eabi-nm -u` was used to read off the exact undefined
- * symbols, rather than guessing from documentation alone.
+ * vendored MPSL (extern/nordic_sdc/mpsl), plus this chip's real IRQ
+ * vector routing for MPSL -- see docs/BLE_ROADMAP.md for how the four
+ * glue functions were identified (linking a minimal test file against
+ * the real vendored archives and reading `arm-none-eabi-nm -u`'s
+ * output, not guessed) and how the IRQ vector assignments below were
+ * confirmed against Nordic's own real reference integration source.
  *
  * NOT wired up to BLE yet. Nothing in this repo calls mpsl_init() or
- * sdc_init() yet -- this file only makes those calls linkable. See the
- * "IRQ vector routing not done yet" note near the bottom for the real
- * blocker on finishing BLE integration.
+ * sdc_init() yet -- this file makes those calls linkable and routes
+ * their interrupts, but nothing enables those interrupts at the NVIC
+ * yet (see the IRQ vector routing section below for why that's
+ * intentional and safe).
  */
 #include <mpsl_hwres.h>
 #include <mpsl_hwres_ppi.h>
@@ -194,3 +196,86 @@ void mpsl_low_latency_acquire_callback(void)
 void mpsl_low_latency_release_callback(void)
 {
 }
+
+/* ---- IRQ vector routing -------------------------------------------------
+ *
+ * MPSL exports MPSL_IRQ_RADIO_Handler()/MPSL_IRQ_RTC0_Handler()/
+ * MPSL_IRQ_TIMER0_Handler()/MPSL_IRQ_CLOCK_Handler() as plain functions
+ * (confirmed: `nm` on libmpsl.a shows them as defined/T symbols, not
+ * undefined) -- the application just needs to route the real vector
+ * table entries to them. Which physical vector each one is for the
+ * nRF54L series is confirmed from Nordic's own real reference
+ * integration (nrfconnect/sdk-nrf,
+ * subsys/mpsl/init/include/mpsl_init_soc.h), not guessed:
+ *
+ *   MPSL_TIMER_IRQn = TIMER10_IRQn
+ *   MPSL_RTC_IRQn   = GRTC_3_IRQn
+ *   MPSL_RADIO_IRQn = RADIO_0_IRQn   -- NOT RADIO_1; confirmed from the
+ *                                       same header that MPSL only ever
+ *                                       touches RADIO_0. RADIO_1_IRQHandler
+ *                                       is deliberately left alone here.
+ *
+ * The clock vector isn't wired in that same file -- found instead in
+ * sdk-nrf's drivers/mpsl/clock_control/nrfx_clock_mpsl.c, whose
+ * nrfx_clock_irq_handler() (the name nrfx's own
+ * nrfx_irqs_nrf54l15_application.h maps to this chip's real
+ * CLOCK_POWER_IRQHandler vector) does nothing but call
+ * MPSL_IRQ_CLOCK_Handler().
+ *
+ * Confirmed from the same reference (subsys/mpsl/init/mpsl_init.c) that
+ * each wrapper does *only* this one call -- no additional logic, no
+ * nesting/locking (the nRF53-specific RTC pretick hook in Zephyr's
+ * mpsl_rtc0_isr_wrapper doesn't apply to nRF54L/this chip).
+ *
+ * NOT setting NVIC priority or calling NVIC_EnableIRQ here. Confirmed
+ * from the same reference that Zephyr's integration calls mpsl_init()
+ * FIRST, and only afterward connects/enables these three IRQs
+ * (TIMER0/RTC0/RADIO) at priority 0 (mpsl.h's MPSL_HIGH_IRQ_PRIORITY) --
+ * i.e. this is the responsibility of whatever code actually calls
+ * mpsl_init()/sdc_init(), which doesn't exist in this repo yet (see
+ * docs/BLE_ROADMAP.md step 3).
+ *
+ * Gated behind ARDUINO_NRF54_MPSL_ENABLED, undefined by default --
+ * unlike the DPPI/PPIB/low-latency functions above, these are NOT safe
+ * to always compile in. Those four are only ever reached by a function
+ * *call* (from mpsl_init()/sdc_init(), which nothing in this repo calls
+ * yet), so --gc-sections strips them from any build that never calls
+ * in. These four IRQHandler functions are different: the vector table
+ * itself (`g_pfnVectors` in the vendored MDK startup .S, which is never
+ * garbage-collected -- it's the binary's entry point) holds their
+ * addresses as data the moment they're *defined*, regardless of whether
+ * anything calls them. Confirmed this the hard way: defining them
+ * unconditionally broke a plain Blink build with "undefined reference
+ * to MPSL_IRQ_RADIO_Handler" and friends, because mpsl_glue.c lives in
+ * cores/nrf54l/ and is compiled into every sketch, but Blink never
+ * links extern/nordic_sdc/mpsl/lib/libmpsl.a (correctly -- it doesn't
+ * use BLE). Since this project has no "opt-in library" home for BLE
+ * code yet, gating behind a macro (rather than moving this file out of
+ * cores/nrf54l/) is the pragmatic fix for now -- revisit once BLE has
+ * an actual Arduino-facing library, at which point this IRQ routing
+ * likely belongs there instead, compiled only when a sketch actually
+ * uses it.
+ */
+#if defined(ARDUINO_NRF54_MPSL_ENABLED)
+
+void RADIO_0_IRQHandler(void)
+{
+    MPSL_IRQ_RADIO_Handler();
+}
+
+void GRTC_3_IRQHandler(void)
+{
+    MPSL_IRQ_RTC0_Handler();
+}
+
+void TIMER10_IRQHandler(void)
+{
+    MPSL_IRQ_TIMER0_Handler();
+}
+
+void CLOCK_POWER_IRQHandler(void)
+{
+    MPSL_IRQ_CLOCK_Handler();
+}
+
+#endif /* ARDUINO_NRF54_MPSL_ENABLED */
