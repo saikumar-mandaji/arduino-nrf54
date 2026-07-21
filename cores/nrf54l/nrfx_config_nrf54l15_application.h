@@ -394,16 +394,32 @@
  * @brief NRFX_GRTC_CONFIG_NUM_OF_CC_CHANNELS
  *
  * Integer value.
+ *
+ * Narrowed from nrfx's generic default of 8 (mask 0x00000f0f, i.e.
+ * channels {0,1,2,3,8,9,10,11}) down to 4 (channels {0,1,2,3} only).
+ * Nordic's own MPSL integration notes document that MPSL reserves GRTC
+ * channels 7-11 (on a separate IRQ line, GRTC_3_IRQn, from this driver's
+ * GRTC_2_IRQn -- see docs/BLE_ROADMAP.md) for BLE/radio scheduling on the
+ * nRF54L series. The original default's channels 8-11 overlapped that
+ * reserved range -- not a live bug today (this core only ever allocates
+ * channel 0 for the main SYSCOUNTER and channel 1 for delay()'s System
+ * ON idle wake, see wiring_time.c), but a future GRTC-based feature could
+ * have silently allocated channel 8-11 and collided with MPSL once BLE
+ * is wired up. Channels 0-3 leave two channels of headroom beyond this
+ * core's current two users.
  */
 #ifndef NRFX_GRTC_CONFIG_NUM_OF_CC_CHANNELS
-#define NRFX_GRTC_CONFIG_NUM_OF_CC_CHANNELS 8
+#define NRFX_GRTC_CONFIG_NUM_OF_CC_CHANNELS 4
 #endif
 
 /**
  * @brief NRFX_GRTC_CONFIG_ALLOWED_CC_CHANNELS_MASK
+ *
+ * See the NRFX_GRTC_CONFIG_NUM_OF_CC_CHANNELS comment above -- narrowed
+ * to channels 0-3 to keep clear of MPSL's reserved channels 7-11.
  */
 #ifndef NRFX_GRTC_CONFIG_ALLOWED_CC_CHANNELS_MASK
-#define NRFX_GRTC_CONFIG_ALLOWED_CC_CHANNELS_MASK 0x00000f0f
+#define NRFX_GRTC_CONFIG_ALLOWED_CC_CHANNELS_MASK 0x0000000f
 #endif
 
 /**

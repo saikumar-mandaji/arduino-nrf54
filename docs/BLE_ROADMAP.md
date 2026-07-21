@@ -4,14 +4,16 @@ This document records the research and initial vendoring work done so
 far toward adding BLE support to this core.
 
 **Status (2026-07-21): the real Nordic SDC + MPSL binaries are vendored
-under `extern/nordic_sdc/`**, and **the four application-side glue
-functions MPSL needs to link are now implemented** in
-`cores/nrf54l/mpsl_glue.c` (see "Glue functions implemented" below) --
-confirmed by a real, zero-undefined-symbols link against the vendored
-archives. No BLE functionality is wired up yet -- no Arduino API, no
-HCI bridge, and IRQ vector routing is blocked on a real, unresolved
-GRTC-ownership conflict with this core's existing `millis()`/`delay()`
-(see step 2 in "Concrete next steps"). This is groundwork, not a
+under `extern/nordic_sdc/`**, **the four application-side glue
+functions MPSL needs to link are implemented** in
+`cores/nrf54l/mpsl_glue.c` (confirmed by a real, zero-undefined-symbols
+link against the vendored archives), and **the GRTC/MPSL ownership
+question is resolved** -- see "GRTC/MPSL conflict: resolved" below: no
+conflict exists, by chip design, and a real latent channel-mask bug was
+found and fixed along the way. No BLE functionality is wired up yet --
+no Arduino API, no HCI bridge, no IRQ vectors routed yet (now unblocked
+implementation work, not an open question -- see "Concrete next
+steps"). This is groundwork, not a
 working BLE stack.
 
 ## Why this isn't a quick add
@@ -277,29 +279,69 @@ as before -- `--gc-sections` correctly strips the four unused functions
 out of sketches that never call `mpsl_init()`/`sdc_init()`, so there's
 no dead-weight cost yet.
 
+## GRTC/MPSL conflict: resolved (2026-07-21)
+
+**Answer: there is no conflict, by chip design -- MPSL and this core's
+own GRTC usage already sit on separate channels *and* separate physical
+interrupt lines.** Found in Nordic's own MPSL integration notes
+(nrfxlib docs, "MPSL nRF54L Series Integration Requirements"), not
+guessed:
+
+- **MPSL reserves GRTC channels 7-11, routed to interrupt `GRTC_3_IRQn`**
+  specifically, for the nRF54L series (plus `TIMER10` and `TIMER20`).
+  The GRTC peripheral splits its channels across four independent NVIC
+  lines (`GRTC_0..3_IRQn`) precisely so a subsystem like MPSL can own a
+  channel range and its own vector without disturbing other GRTC users
+  on the same physical peripheral.
+- **This core's own GRTC vector is `GRTC_2_IRQn`, not `GRTC_3_IRQn`.**
+  Confirmed by reading `extern/nrfx/bsp/stable/soc/nrfx_mdk_fixups.h`'s
+  `NRF54L15_XXAA` block directly: for `NRF_APPLICATION` builds without
+  `NRF_TRUSTZONE_NONSECURE` defined (this core's actual build, per its
+  secure-only v1 scoping -- see `docs/ARCHITECTURE.md`),
+  `GRTC_IRQn`/`GRTC_IRQHandler` resolve to `GRTC_2_IRQn`/
+  `GRTC_2_IRQHandler`, and `GRTC_MAIN_CC_CHANNEL` (the channel
+  `nrfx_grtc_syscounter_start()` auto-allocates for `millis()`/
+  `micros()`) is channel 0. `delay()`'s System ON idle wake channel
+  (`docs/LOW_POWER_ROADMAP.md`) is channel 1, the next one
+  `nrfx_grtc_channel_alloc()` hands out. Both are on `GRTC_2_IRQn`,
+  nowhere near MPSL's `GRTC_3_IRQn`/channels 7-11.
+- **A real, previously-latent bug was found and fixed while confirming
+  this**, though: this core's `NRFX_GRTC_CONFIG_ALLOWED_CC_CHANNELS_MASK`
+  was nrfx's generic template default, `0x00000f0f` -- channels
+  `{0,1,2,3,8,9,10,11}`. Channels 8-11 of that set directly overlap
+  MPSL's reserved 7-11 range. Not a live bug today (this core has only
+  ever allocated channels 0 and 1), but a future GRTC-based feature
+  could have silently allocated channel 8-11 and collided with MPSL the
+  moment BLE was wired up. Narrowed to `0x0000000f` (channels 0-3 only)
+  in `cores/nrf54l/nrfx_config_nrf54l15_application.h` -- two channels
+  of headroom beyond this core's current two users, safely clear of
+  MPSL's range. Rebuilt `Blink` to confirm no regression.
+
+This resolves the "does GRTC-based `millis()`/`delay()` conflict with
+BLE" question this document previously flagged as blocking IRQ vector
+work. It does **not** mean IRQ vector routing is done -- see the next
+step.
+
 ## Concrete next steps
 
 1. ~~Implement the four glue functions~~ **Done** -- see above.
-2. Route this chip's real IRQ vectors (RADIO, the GRTC instance MPSL
-   uses as its RTC0, TIMER10, and whichever clock/power IRQ maps to
+2. Route this chip's real IRQ vectors (RADIO, GRTC_3_IRQn for MPSL's
+   RTC0, TIMER10, and whichever clock/power IRQ maps to
    `MPSL_IRQ_CLOCK_Handler`) to the exported `MPSL_IRQ_*_Handler`
    functions, following the existing `nrfx_irqs_nrf54l15_application.h`
-   aliasing pattern. **Blocked on a real, unresolved conflict, not just
-   undone work:** `mpsl.h`'s own doc comment says "For nRF54 series
-   devices, the RTC timer corresponds to NRF_GRTC" and that
-   `MPSL_IRQ_RTC0_Handler` "should be placed in the interrupt vector
-   table" -- but this core's `wiring_time.c` *already* owns GRTC's
-   vector (routed to `nrfx_grtc_irq_handler` for `millis()`/`micros()`/
-   `delay()`, including the new System ON idle wake channel from
-   `docs/LOW_POWER_ROADMAP.md`). Nothing in the vendored MPSL headers
-   documents whether `MPSL_IRQ_RTC0_Handler` internally also services
-   channels it doesn't own (letting GRTC-based timing coexist) or
-   whether MPSL expects exclusive ownership of the whole GRTC vector
-   once BLE is enabled (which would mean `millis()`/`delay()` need to
-   be rearchitected to go through an MPSL-provided timer instead once
-   BLE is active). This needs a real answer -- from Nordic's own NCS/
-   Zephyr integration source, since these vendored headers alone don't
-   say -- before wiring any IRQ vectors, not a guess.
+   aliasing pattern -- the GRTC-conflict question above is resolved, so
+   this is now just implementation work, not blocked on an open
+   question. Concretely: `GRTC_3_IRQHandler` needs to be aliased/defined
+   to call `MPSL_IRQ_RTC0_Handler()` (a name this core doesn't currently
+   touch, so this is additive, not a change to the existing
+   `GRTC_2_IRQHandler` routing), and similarly for `RADIO_0/1_IRQHandler`,
+   `TIMER10_IRQHandler`, and the clock/power vector. Still needs: (a)
+   confirming `mpsl_init()` must actually be called before these IRQs
+   fire meaningfully (per the integration notes, MPSL enables its own
+   reserved interrupts internally), and (b) working out where in this
+   core's startup sequence `mpsl_init()`/`sdc_init()`/`sdc_enable()`
+   should be called from (main.cpp, before `setup()`, similar to how
+   `nrf54_core_time_init()` runs before `setup()` today).
 3. Get `mpsl_init()` + `sdc_init()` + `sdc_enable()` actually running on
    real hardware (build-and-link success is not the same as working --
    this needs the same over-SWD verification discipline used for every
