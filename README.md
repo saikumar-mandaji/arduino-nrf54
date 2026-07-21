@@ -18,7 +18,8 @@ hardware](#verified-on-real-hardware). Contributions and hardware
 reports from other supported boards are very welcome.*
 
 # Table of contents
-* [Supported peripherals](#supported-peripherals)
+* [Feature matrix](#feature-matrix)
+* [Bluetooth LE](#bluetooth-le)
 * [Supported boards](#supported-boards)
 * **[How to install](#how-to-install)**
   - [Boards Manager Installation](#boards-manager-installation)
@@ -31,24 +32,57 @@ reports from other supported boards are very welcome.*
 * [Docs](#docs)
 * [License](#license)
 
-## Supported peripherals
+## Feature matrix
+
+| Status | Meaning |
+|---|---|
+| **Implemented** | Available through the normal Arduino API and confirmed on real silicon (SWD register reads, measured I/O) — see [Verified on real hardware](#verified-on-real-hardware). |
+| **Builds, unconfirmed** | Compiles and runs without crashing, but the actual protocol/data-level behavior hasn't been confirmed against a scope, bus analyzer, or known source yet. |
+| **Not implemented** | No code for this yet. |
 
 | API | Peripheral | Status |
 |---|---|---|
-| `pinMode` / `digitalWrite` / `digitalRead` | GPIO | ✅ Hardware-verified |
-| `millis()` / `micros()` / `delay()` | GRTC | ✅ Hardware-verified (`delay()` sleeps via WFI, confirmed over SWD) |
-| `Serial` | UARTE20 | ✅ Hardware-verified, TX + RX bidirectional |
-| `SPI` | SPIM21 | ⚠️ Builds/runs; protocol-level data not yet scope-confirmed |
-| `Wire` (I2C) | TWIM22 | ⚠️ Builds/runs; protocol-level data not yet scope-confirmed |
-| `analogRead()` | SAADC | ⚠️ Builds/runs; not yet confirmed against a known analog source |
-| `analogWrite()` | PWM20 | ✅ Hardware-verified, duty cycle confirmed changing over real time |
-| `attachInterrupt()` / `detachInterrupt()` | GPIOTE | ✅ IRQ line confirmed armed; ISR-on-button-press not yet confirmed |
-| BLE controller bring-up (`mpsl_init`→`sdc_enable`) | RADIO / MPSL / SDC | ✅ Hardware-verified (not yet exposed to sketches — see [Roadmap](#roadmap)) |
-| System OFF deep sleep | REGULATORS | ❌ Not implemented yet |
+| `pinMode` / `digitalWrite` / `digitalRead` | GPIO | **Implemented** |
+| `millis()` / `micros()` / `delay()` | GRTC | **Implemented** — `delay()` sleeps via `WFI`, confirmed over SWD |
+| `Serial` | UARTE20 | **Implemented** — TX + RX bidirectional |
+| `SPI` | SPIM21 | **Builds, unconfirmed** — protocol-level data not yet scope-confirmed |
+| `Wire` (I2C) | TWIM22 | **Builds, unconfirmed** — protocol-level data not yet scope-confirmed |
+| `analogRead()` | SAADC | **Builds, unconfirmed** — not yet confirmed against a known analog source |
+| `analogWrite()` | PWM20 | **Implemented** — duty cycle confirmed changing over real time |
+| `attachInterrupt()` / `detachInterrupt()` | GPIOTE | **Builds, unconfirmed** — IRQ line confirmed armed, ISR-on-button-press not yet confirmed |
+| BLE controller bring-up (`mpsl_init`→`sdc_enable`) | RADIO / MPSL / SDC | **Implemented** at the controller level only — see [Bluetooth LE](#bluetooth-le) |
+| System OFF deep sleep | REGULATORS | **Not implemented** |
 
-See [`docs/VERIFICATION.md`](docs/VERIFICATION.md) for exactly how each ✅
-was verified (register reads, SWD halts, measured values) — nothing here
-is marked verified on the strength of "it compiled."
+See [`docs/VERIFICATION.md`](docs/VERIFICATION.md) for exactly how each
+**Implemented** row was verified (register reads, SWD halts, measured
+values) — nothing here is marked Implemented on the strength of "it
+compiled."
+
+## Bluetooth LE
+
+**Scope boundary, stated plainly**: there is no BLE library, no GATT
+API, no advertising/scanning/central/peripheral roles, and no examples
+for any of that — this core does not have an Arduino-facing BLE API
+yet. What exists today is the **controller bring-up sequence only**:
+`cores/nrf54l/mpsl_glue.c` calls `mpsl_init()` → connects the real
+RADIO/GRTC/TIMER10/clock IRQ vectors → `nrfx_cracen_init()` →
+`sdc_init()` → `sdc_rand_source_register()` (this chip's real CRACEN
+hardware entropy source) → `sdc_enable()`, gated behind a build flag
+(`ARDUINO_NRF54_MPSL_ENABLED`, undefined by default) so ordinary
+sketches keep building normally. This sequence is **hardware-confirmed
+succeeding** on a real nRF54L15-DK — `examples/BLEHardwareTest` (the
+*only* BLE example in this repo) calls it and lights `LED_BUILTIN`
+solid on success, read back over SWD as genuinely true.
+
+That's a real, verified building block — not a working radio feature.
+Nothing above the controller exists yet: no HCI host, no GAP/GATT, no
+way for a sketch to advertise, scan, or exchange data over BLE. See
+[`docs/BLE_ROADMAP.md`](docs/BLE_ROADMAP.md) for the concrete next
+steps (host-stack decision between Nordic's own Bare Metal S1xx API and
+a NimBLE-over-HCI bridge, then the Arduino-facing API itself) and why
+this isn't a quick add (no classic SoftDevice on this chip; SDC/MPSL
+are precompiled binaries vendored from Nordic's `sdk-nrfxlib`, not
+source this core can extend directly).
 
 ## Supported boards
 
@@ -178,8 +212,8 @@ void loop()
 More complete examples, one per peripheral, live in
 [`examples/`](examples/): `Blink`, `SerialEcho`, `I2CScanner`,
 `SPILoopback`, `AnalogReadSerial`, `PWMFade`, `ButtonInterrupt`, and
-`BLEHardwareTest` (controller-only, not yet a usable BLE API — see
-[Roadmap](#roadmap)).
+`BLEHardwareTest` — the only BLE example, and it's a controller-level
+bring-up check, not a BLE feature; see [Bluetooth LE](#bluetooth-le).
 
 ## Pin macros
 
@@ -244,12 +278,8 @@ from a clean compile:
   `attachInterrupt()` entirely and `Serial`'s RX path — invisible to
   every build/link check until real hardware exposed it via a frozen
   program counter. Found and fixed project-wide.
-- **BLE controller bring-up** — `mpsl_init()` → `sdc_init()` →
-  `sdc_rand_source_register()` (wired to this chip's real CRACEN
-  hardware entropy source) → `sdc_enable()` confirmed genuinely
-  succeeding on real hardware (`examples/BLEHardwareTest`), with this
-  chip's real RADIO/GRTC/TIMER10/clock IRQ vectors routed to MPSL's
-  handlers.
+- **BLE controller bring-up** — see [Bluetooth LE](#bluetooth-le) for
+  the full account and its scope boundary.
 
 `Wire`/`SPI`/`analogRead`/`attachInterrupt` all run on real hardware
 without crashing, but still need protocol-level confirmation (actual
@@ -259,14 +289,9 @@ over.
 
 ## Roadmap
 
-- **BLE**: not exposed to sketches yet, but the controller bring-up
-  sequence is implemented and hardware-verified (see above).
-  `cores/nrf54l/mpsl_glue.c` is gated behind a build flag
-  (`ARDUINO_NRF54_MPSL_ENABLED`) so ordinary sketches keep building
-  normally. There's still no Arduino API or HCI host, so none of this
-  is reachable from a normal sketch yet. See
-  [`docs/BLE_ROADMAP.md`](docs/BLE_ROADMAP.md) for status and concrete
-  next steps.
+- **BLE**: controller bring-up is hardware-verified, but there's no
+  host stack or Arduino API yet — see [Bluetooth LE](#bluetooth-le) and
+  [`docs/BLE_ROADMAP.md`](docs/BLE_ROADMAP.md) for concrete next steps.
 - **Low-power sleep modes**: System ON idle is implemented and
   hardware-verified (see above). System OFF (deep sleep) is not
   implemented yet. See
