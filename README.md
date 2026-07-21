@@ -8,7 +8,7 @@
 **An Arduino API core for the Nordic nRF54L15** -- built on Nordic's `nrfx`
 HAL and ARM's CMSIS-Core, since no Arduino core exists yet for the nRF54
 series. Scope so far: GPIO (`pinMode`/`digitalWrite`/`digitalRead`),
-`Serial` (over UARTE30), `millis()`/`micros()`/`delay()` (over GRTC),
+`Serial` (over UARTE20), `millis()`/`micros()`/`delay()` (over GRTC),
 `SPI` (over SPIM21), `Wire`/I2C (over TWIM22), `analogRead()` (over
 SAADC), `analogWrite()` (over PWM20), and `attachInterrupt()`/
 `detachInterrupt()` (over GPIOTE).
@@ -30,10 +30,17 @@ actually halt the CPU at the `wfi` instruction (not spin), and
 `PWMFade`'s duty cycle is confirmed genuinely changing over real time.
 `Wire`/`SPI` continue to build/run without crashing but still need
 protocol-level hardware confirmation (see `docs/VERIFICATION.md`).
-`Serial`'s output-visibility issue remains a genuine unresolved
-discrepancy -- a human using Nordic's own Serial Terminal app reported
-seeing output, but automated tooling still can't independently
-reproduce it, even after the IRQ vector fix. The SDC/MPSL BLE controller
+**`Serial`'s long-standing output-visibility mystery is now resolved**:
+four compounding bugs (wrong UARTE instance/pins, the DK's onboard VCOM
+bridge tri-stating its UART pins until DTR is asserted, EasyDMA
+requiring RAM-resident TX buffers, and a missing
+`nrfx_uarte_rx_enable()` call), all found by reading vendor headers/
+devicetree directly and fixed -- confirmed hardware-working
+bidirectionally (`SerialEcho`'s greeting received, and a round-trip
+echo test both succeeded) over the DK's `COM21` VCOM port. See
+`docs/VERIFICATION.md` for the full account, including one known,
+already-scoped-for-v2 limitation (the single-byte RX buffer can drop
+bytes under fast back-to-back input). The SDC/MPSL BLE controller
 bring-up sequence is implemented and **hardware-confirmed working**
 (not yet a usable BLE feature -- see Roadmap). Low-power sleep (System
 ON idle) is implemented and hardware-verified; System OFF deep sleep is

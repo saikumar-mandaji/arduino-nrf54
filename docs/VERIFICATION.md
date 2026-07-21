@@ -191,6 +191,13 @@ amount of compile-time checking could have caught:**
    this via two different serial libraries -- so this is not a clean
    confirmed-pass, but the balance of evidence (a known-good vendor tool
    reportedly worked) suggests the UARTE30/pin fix itself is correct.
+   **Superseded (2026-07-21): this was still wrong.** Re-reading
+   Zephyr's real devicetree directly showed `zephyr,console = &uart20`
+   -- UARTE30 is a real, separately-configured UART on this board, just
+   not the one bridged to the automated-tooling-visible VCOM port.
+   Reverted to `NRF_UARTE20`, this time with the correct pins
+   (P1.04/P1.05, not the earlier guessed P1.00/P1.01). See "Serial
+   mystery: RESOLVED" below for the full, final account.
 2. **`nrfx_grtc_syscounter_start(true, NULL)` crashed with a HardFault.**
    After fixing UART, `Blink` was flashed and the LED stayed solidly on
    instead of blinking. Halting the CPU over SWD showed it wasn't even
@@ -292,39 +299,79 @@ PMIC's exact SDA/SCL pin wiring for this specific DK could not be found
 in mainline Zephyr's board files during this pass, so `Wire`'s pins are
 still a guess, not a confirmed value like `LED_BUILTIN`/`BTN1`/SPI).
 
-## Genuine unresolved discrepancy: Serial
+## Serial mystery: RESOLVED (2026-07-21)
 
-The user reported seeing live serial output on the DK's VCOM port via
-Nordic's own nRF Connect for Desktop "Serial Terminal" app (both after
-the UARTE30 fix and again while testing `SerialEcho`). Independent
-automated verification could not reproduce this: two different serial
-libraries (.NET `SerialPort` and Python `pyserial`, the latter tried
-with explicit baud/parity/stopbits, both with and without DTR/RTS
-asserted) both consistently read **zero bytes** from both enumerated
-VCOM ports (`COM20`, `COM21`), across multiple flashed sketches
-(`SerialEcho`, `AnalogReadSerial`, `I2CScanner`) and multiple resets.
-The firmware side is confirmed healthy throughout -- `HardwareSerial::begin()`
-reports success (`_began` reads `true` via a live SWD memory read of the
-`Serial` object), and the CPU is confirmed executing normally (not
-crashed) via halt/PC sampling. This is a real, unresolved discrepancy
-between "a human using a known-good vendor tool" and "automated tooling
-built for this project" -- not something to treat as settled in either
-direction. Next step to actually resolve it: run a known-good terminal
-tool and the automated Python/`.NET` read path side-by-side against the
-same reset, to see whether the automated tooling is doing something
-wrong (most likely) or whether output is somehow intermittent.
+The long-standing "Serial produces no output visible to any automated
+tooling, but a human using Nordic's own Serial Terminal app reported
+seeing it" discrepancy is now root-caused and fixed. It turned out to
+be **four separate, compounding issues**, not one:
 
-**New data point (2026-07-21, `SerialEcho` retested after the IRQ vector
-fix above)**: reading UARTE30's own registers directly over SWD showed
-`ENABLE` = `0` and `PSEL.RXD` = `0xFFFFFFFF` (disconnected) at rest,
-despite `_began` confirming `Serial.begin()` succeeded. Not identified
-as a root cause with confidence -- `nrfx_uarte.c` calls
-`nrfy_uarte_enable()`/`nrfy_uarte_disable()` in multiple places
-(11 call sites total), consistent with a power-saving
-enable-only-during-active-transfer design that may make `ENABLE=0` at
-an arbitrary snapshot completely normal and unrelated to the missing-
-output discrepancy -- but recorded here as a concrete new fact for
-whoever investigates this next, rather than left unexamined.
+1. **Wrong UARTE instance/pins.** This project previously used UARTE30
+   (TX=P0.00/RX=P0.01), based on an earlier belief that an UARTE20
+   attempt had failed -- but that earlier attempt used *guessed* pins
+   (P1.00/P1.01). Re-reading Zephyr's real
+   `nrf54l15dk_nrf54l_05_10_15_cpuapp_common.dtsi` directly shows the
+   DK's actual chosen console is `zephyr,console = &uart20`, and
+   `nrf54l15dk_nrf54l_05_10_15-pinctrl.dtsi` gives uart20's real pinctrl
+   as TX=P1.04, RX=P1.05 (RTS=P1.06, CTS=P1.07, not wired up by this
+   core -- 2-wire only). Fixed: `cores/nrf54l/HardwareSerial.cpp` now
+   uses `NRF_UARTE20`, and `variants/nrf54l15dk/pins_arduino.h` sets
+   `PIN_SERIAL_TX`/`PIN_SERIAL_RX` to P1.04/P1.05.
+2. **The DK's onboard debug/VCOM UART bridge tri-states its UART pins
+   until the host terminal asserts DTR** -- confirmed directly from
+   Nordic's nRF54L15-DK Hardware User Guide: the bridge routes through
+   analog switches (U4/U5) gated by the virtual COM port's DTR line.
+   Every prior automated-tooling attempt in this project never asserted
+   DTR, so it saw zero bytes even on firmware that was transmitting
+   correctly. Fix: no firmware change needed, just DTR must be asserted
+   host-side (`SerialPort.DtrEnable = true` in .NET, equivalent in
+   Python `pyserial`). Also empirically discovered on this DK unit:
+   **UARTE20 bridges to `COM21` (vcom:1), not `COM20`** (vcom:0) --
+   contrary to the naive vcom-index assumption.
+3. **EasyDMA requires the TX buffer to be in Data RAM.**
+   `extern/nrfx/drivers/src/nrfx_uarte.c`'s `poll_out()` calls
+   `nrf_dma_accessible_check()` (`extern/nrfx/hal/nrf_common.h`: `(addr
+   & 0xE0000000) == 0x20000000`) and silently returns `-EINVAL` per byte
+   for any buffer outside SRAM. `HardwareSerial::write(const uint8_t*,
+   size_t)` used to hand the caller's pointer straight to
+   `nrfx_uarte_tx()` -- fine for `Serial.write(uint8_t)` (always a
+   stack variable), but broken for `Serial.print("literal")`/`println`,
+   whose flash-resident string-literal pointer resolves through this
+   class's own bulk-write override (shadowing `Print`'s own safe
+   byte-by-byte default). Every `print`/`println` with a string literal
+   sent nothing, matching "0 bytes" exactly regardless of instance/pins.
+   Fixed by copying through a small RAM staging buffer before calling
+   `nrfx_uarte_tx()` (see the file comment above `write()`).
+4. **`nrfx_uarte_rx_buffer_set()` alone never starts reception.**
+   Confirmed directly from `nrfx_uarte.h`'s doc comment for
+   `nrfx_uarte_rx_enable()`: the receiver must be explicitly enabled,
+   which synchronously fires `NRFX_UARTE_EVT_RX_BUF_REQUEST`, and the
+   app must respond by calling `rx_buffer_set()` -- the same event
+   fires again every time the current buffer fills, so the app must
+   keep re-supplying it from the event handler. This project called
+   `rx_buffer_set()` from `begin()`/`read()` but never called
+   `rx_enable()` at all, so RX was never actually started -- matching
+   the previously-observed `PSEL.RXD == 0xFFFFFFFF` (disconnected)
+   register read exactly. Fixed: `begin()` now calls
+   `nrfx_uarte_rx_enable(&s_uarte, 0)` once, and
+   `uarte_event_handler()` now handles `NRFX_UARTE_EVT_RX_BUF_REQUEST`
+   by re-supplying the single-byte buffer indefinitely.
+
+**Hardware-confirmed working, both directions**, via a PowerShell
+`System.IO.Ports.SerialPort` session on `COM21` with `DtrEnable`/
+`RtsEnable` explicitly set true (both default `false` in .NET):
+`SerialEcho`'s startup greeting ("arduino-nrf54 SerialEcho ready") was
+received cleanly, and a sent string ("Hello!") was echoed back exactly.
+
+**Known remaining limitation (not a bug, already scoped in v1):** a
+second round-trip test with a longer string ("The quick brown fox
+12345") echoed back with two spaces silently dropped
+("Thequickbrown fox12345"-style loss). This matches the single-byte
+RX buffer's documented limitation (see the comment above `s_rx_byte` in
+`HardwareSerial.cpp`): with no ring buffer, a byte arriving before
+`loop()` calls `Serial.read()` for the previous one overwrites it. A
+ring-buffer RX (matching upstream Arduino cores) remains a known v2
+follow-up, not a regression from this fix.
 
 ## What IS verified (compile-time / pre-hardware)
 
@@ -448,19 +495,13 @@ anything:
 
 ## What is NOT verified
 
-- **`Serial` still produces no observed output on the DK's VCOM port**,
-  even after switching to the believed-correct `UARTE30`/P0.00/P0.01.
-  Sent bytes from the host were not echoed back by `SerialEcho` either.
-  The firmware itself is confirmed running normally (not crashed) and
-  `HardwareSerial::begin()` reports success (`_began` reads `true` via a
-  live SWD memory read of the `Serial` object). The most likely
-  remaining cause: the nRF54L15-DK's onboard interface MCU may require
-  UART logging to be explicitly enabled via Nordic's **Board
-  Configurator** app (part of nRF Connect for Desktop, a GUI tool) before
-  it bridges P0.00/P0.01 to the USB VCOM port -- this is a documented
-  quirk of this board, not something fixable from target firmware alone.
-  Not yet confirmed either way; needs either that tool or a logic
-  analyzer directly on P0.00/P0.01 to fully resolve.
+- ~~`Serial` still produces no observed output~~ **RESOLVED (2026-07-21)
+  -- see "Serial mystery: RESOLVED" above.** Four compounding bugs (wrong
+  UARTE instance/pins, DK's DTR-gated VCOM bridge, EasyDMA RAM-only TX
+  buffers, missing `nrfx_uarte_rx_enable()`), all fixed; TX and RX both
+  hardware-confirmed working via `SerialEcho` over `COM21`. One known,
+  already-scoped-for-v2 limitation remains: the single-byte RX buffer
+  can drop bytes under back-to-back load (no ring buffer yet).
 - **`micros()`/`delay()` accuracy is unverified quantitatively** -- the
   fix above got `delay()` un-stuck and the LED blinks at a
   visually-roughly-correct rate, but no scope/logic-analyzer measurement

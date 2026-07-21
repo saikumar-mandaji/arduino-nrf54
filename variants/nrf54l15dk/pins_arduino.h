@@ -125,13 +125,20 @@
 #define PIN_PWM2 D25 /* P2.01 -- VERIFY */
 #define PIN_PWM3 D26 /* P2.02 -- VERIFY */
 
-/* UARTE30 pins used by HardwareSerial (Serial), routed to the DK's
- * onboard J-Link VCOM UART bridge (VCOM0). CONFIRMED, not a placeholder
- * -- matches Zephyr's own nrf54l15dk_nrf54l15 devicetree (uart30,
- * TX=P0.00, RX=P0.01) and was cross-checked against real hardware after
- * the original UARTE20/P1.00-P1.01 guess produced no serial output at
- * all. See docs/VERIFICATION.md for the bring-up account. */
-#define PIN_SERIAL_TX P0_PIN(0)
-#define PIN_SERIAL_RX P0_PIN(1)
+/* UARTE20 pins used by HardwareSerial (Serial), routed to the DK's
+ * onboard J-Link VCOM UART bridge. REAL BUG FIXED (2026-07-21): this
+ * project previously used UARTE30/P0.00-P0.01, reasoning an earlier
+ * UARTE20 attempt (with guessed pins P1.00/P1.01) had failed. Re-reading
+ * Zephyr's real nrf54l15dk devicetree directly shows `zephyr,console =
+ * &uart20`, i.e. UARTE20 genuinely *is* the DK's real console/VCOM-
+ * bridged instance -- the earlier attempt just had the wrong pins.
+ * uart20's real pinctrl (also confirmed directly, not from memory):
+ * TX=P1.04, RX=P1.05, RTS=P1.06, CTS=P1.07. RTS/CTS aren't wired up by
+ * this core (2-wire TX/RX only, no hardware flow control). uart30
+ * (P0.00/P0.01, this project's previous choice) is a real, separately
+ * configured UART on this board, just not the one bridged to the
+ * automated-tooling-visible VCOM port. See docs/VERIFICATION.md. */
+#define PIN_SERIAL_TX P1_PIN(4)
+#define PIN_SERIAL_RX P1_PIN(5)
 
 #endif /* PINS_ARDUINO_H */

@@ -44,7 +44,7 @@ proven on real hardware -- documented here rather than silently assumed.
 cores/nrf54l/         -- the Arduino API implementation
   Arduino.h            top-level API header
   Print.h / .cpp        print()/println() base class
-  HardwareSerial.h/.cpp  Serial, over UARTE30 (see below -- was UARTE20)
+  HardwareSerial.h/.cpp  Serial, over UARTE20 (see below)
   SPI.h/.cpp               SPI, over SPIM21 (blocking transfers only)
   Wire.h/.cpp              I2C (TwoWire), over TWIM22 (blocking, master only)
   wiring_digital.c       pinMode/digitalWrite/digitalRead, over nrf_gpio
@@ -161,26 +161,31 @@ visible in the vendored device header: `UARTE20_IRQn`, `SPIM20_IRQn`,
 
 `SPI` uses index 21 (`NRF_SPIM21`) and `Wire` uses index 22
 (`NRF_TWIM22`) -- confirmed independent blocks, not a guess. `Serial`
-originally used index 20 (`NRF_UARTE20`) on the same "any free index
-works" reasoning -- but that turned out to be wrong for a reason this
-reasoning alone couldn't reveal: which index is actually **wired to the
-DK's onboard USB VCOM bridge** is a hardware/schematic fact, not a free
-choice. See the next section.
+uses index 20 (`NRF_UARTE20`), which is *not* a free choice like
+SPI/Wire's indices -- which index is actually **wired to the DK's
+onboard USB VCOM bridge** is a hardware/schematic fact, and this core
+took two wrong turns (wrong pins, then wrong instance entirely) before
+confirming it via Zephyr's real devicetree. See the next section.
 
-## Serial: UARTE30 (not UARTE20), blocking TX, single-byte polled RX
+## Serial: UARTE20, blocking TX, single-byte polled RX
 
-`HardwareSerial` wraps **UARTE30**, pins **P0.00 (TX) / P0.01 (RX)** --
+`HardwareSerial` wraps **UARTE20**, pins **P1.04 (TX) / P1.05 (RX)** --
 confirmed to be the instance actually wired to the nRF54L15-DK's onboard
-J-Link VCOM bridge (cross-checked against Zephyr's own
-`nrf54l15dk_nrf54l15` devicetree, which routes its `uart30` node to
-those exact pins for console/logging). The original choice of UARTE20
-was a reasonable-sounding but wrong guess -- it produced zero serial
-output on real hardware, since UARTE20 was never connected to anything
-outside the chip on this board. See `docs/VERIFICATION.md`'s "Real
-hardware bring-up" section for the full story, including that `Serial`
-still isn't confirmed working even with the corrected instance/pins (a
-separate, still-open issue, likely related to the DK's interface-MCU
-configuration rather than this core's firmware).
+J-Link VCOM bridge, via Zephyr's real
+`nrf54l15dk_nrf54l_05_10_15_cpuapp_common.dtsi` (`zephyr,console =
+&uart20`) and its pinctrl file. This core went through two wrong guesses
+before landing here: first UARTE20 with guessed pins P1.00/P1.01 (wrong
+pins, same right instance), then a switch to UARTE30/P0.00-P0.01 on the
+reasoning that the first attempt's silence meant UARTE20 itself was
+disconnected (wrong instance -- UARTE30 is a real, separately-configured
+UART on this board, just not the console one). Re-reading the
+devicetree directly (not from memory) resolved it. This -- plus an
+EasyDMA RAM-only-TX-buffer bug and a missing `nrfx_uarte_rx_enable()`
+call, both independent of instance/pins -- was the full root cause of
+the long-standing "no Serial output visible to automated tooling"
+mystery. See `docs/VERIFICATION.md`'s "Serial mystery: RESOLVED"
+section for the complete account; TX and RX are now both
+hardware-confirmed working bidirectionally.
 
 `write()` uses `nrfx_uarte_tx(..., NRFX_UARTE_TX_BLOCKING)`.
 `read()`/`available()` poll a single re-armed one-byte RX buffer -- there

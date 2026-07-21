@@ -136,12 +136,14 @@
  * xiao_nrf54l15-pinctrl.dtsi's uart21_default group (TX=P2.08, RX=P2.07)
  * and seeed_xiao_connector.dtsi (`xiao_serial: &uart21`), matching the
  * standard XIAO D6=TX/D7=RX convention. NOTE: this project's
- * HardwareSerial is built on the fixed UARTE30 instance (see
+ * HardwareSerial is built on the fixed UARTE20 instance (see
  * docs/ARCHITECTURE.md), so -- exactly like the SPI pins above -- these
- * physical pins are simply routed to UARTE30 rather than the UART21
- * peripheral Zephyr's own driver would use on this board. XIAO nRF54L15
- * has no onboard USB-serial bridge (unlike the DK's J-Link VCOM), so
- * Serial here means the D6/D7 header pins directly, not a USB port. */
+ * physical pins are simply routed to UARTE20 rather than the UART21
+ * peripheral Zephyr's own driver would use on this board -- nRF's pins
+ * are fully remappable, so this is fine regardless of instance name.
+ * XIAO nRF54L15 has no onboard USB-serial bridge (unlike the DK's
+ * J-Link VCOM), so Serial here means the D6/D7 header pins directly,
+ * not a USB port. */
 #define PIN_SERIAL_TX D6 /* P2.08 */
 #define PIN_SERIAL_RX D7 /* P2.07 */
 

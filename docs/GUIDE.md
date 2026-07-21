@@ -138,7 +138,7 @@ flowchart LR
 
     subgraph HW["Physical peripheral / pins"]
         H1["GPIO P0/P1/P2 -- any pin"]
-        H2["UARTE30 -- P0.00 TX / P0.01 RX (DK VCOM)"]
+        H2["UARTE20 -- P1.04 TX / P1.05 RX (DK VCOM)"]
         H3["GRTC -- 1 MHz global counter"]
         H4["SPIM21 -- SCK/MOSI/MISO/SS (placeholder pins)"]
         H5["TWIM22 -- SDA/SCL (placeholder pins)"]
@@ -255,7 +255,7 @@ Built on `nrf_gpio` directly (`wiring_digital.c`). Works on any `Dn` pin.
 | `LED_BUILTIN` | P2.09, **active-high** | Confirmed against Zephyr's `nrf54l15dk_common.dtsi`; visually confirmed blinking on real hardware |
 | `BTN1` | P1.13 | Confirmed against Zephyr's devicetree (`button0`/`sw0`); **not yet physically pressed and confirmed** |
 
-### Serial (UARTE30)
+### Serial (UARTE20)
 
 ```cpp
 Serial.begin(baudrate);
@@ -266,27 +266,30 @@ int Serial.read();
 int Serial.peek();
 ```
 
-`HardwareSerial` wraps **UARTE30**, on **P0.00 (TX) / P0.01 (RX)** --
+`HardwareSerial` wraps **UARTE20**, on **P1.04 (TX) / P1.05 (RX)** --
 confirmed to be the instance wired to the nRF54L15-DK's onboard J-Link
-VCOM bridge (cross-checked against Zephyr's `nrf54l15dk_nrf54l15`
-devicetree `uart30` node). `write()` is blocking
-(`NRFX_UARTE_TX_BLOCKING`). `read()`/`available()` poll a single
-re-armed one-byte RX buffer -- there is no interrupt-driven ring buffer
+VCOM bridge (cross-checked against Zephyr's real
+`nrf54l15dk_nrf54l_05_10_15_cpuapp_common.dtsi`, `zephyr,console =
+&uart20`, and its pinctrl file). `write()` is blocking
+(`NRFX_UARTE_TX_BLOCKING`), copying through a small RAM staging buffer
+first (EasyDMA requires TX source buffers in Data RAM -- flash-resident
+string literals used to fail this silently). `read()`/`available()`
+poll a single re-armed one-byte RX buffer, kept running via
+`nrfx_uarte_rx_enable()` -- there is no interrupt-driven ring buffer
 yet, so bytes arriving faster than the sketch calls `Serial.read()` can
 be dropped (a known, disclosed limitation, not a bug).
 
-**Status is a genuine, unresolved discrepancy, not a confirmed pass or
-fail**: the user reported seeing live output on the DK's VCOM port via
-Nordic's own nRF Connect for Desktop "Serial Terminal" app. Independent
-automated verification (two different serial libraries, .NET
-`SerialPort` and Python `pyserial`, tried against both enumerated VCOM
-ports) read zero bytes under the same conditions. The firmware side is
-confirmed healthy either way (`HardwareSerial::begin()` reports success,
-read back live via SWD). See [Hardware bring-up
-status](#hardware-bring-up-status) and `docs/VERIFICATION.md` for the
-full account -- this needs to be resolved with a known-good terminal
-tool run side-by-side with the automated read path before it can be
-called either confirmed-working or confirmed-broken.
+**Status: CONFIRMED WORKING, both directions, on real hardware
+(2026-07-21)**. The long-standing "no output visible to automated
+tooling" mystery is resolved -- it was four compounding bugs (wrong
+UARTE instance/pins, the DK's onboard VCOM bridge tri-stating its UART
+pins until the host asserts DTR, the EasyDMA RAM-buffer issue above, and
+a missing `nrfx_uarte_rx_enable()` call), not one. Verified via a
+PowerShell `SerialPort` session on `COM21` with `DtrEnable`/`RtsEnable`
+explicitly set true: `SerialEcho`'s startup greeting was received, and
+a sent string was echoed back correctly. See [Hardware bring-up
+status](#hardware-bring-up-status) and `docs/VERIFICATION.md`'s "Serial
+mystery: RESOLVED" section for the full account.
 
 | Symbol | Pin | Status |
 |---|---|---|
@@ -445,21 +448,36 @@ debugging by halting the CPU and reading live registers/memory, not just
 - `LED_BUILTIN` (P2.09, active-high) and `BTN1` (P1.13) pin assignments,
   corrected against Zephyr's real devicetree.
 
-**Two real bugs found and fixed via SWD debugging** (neither was
-catchable by compile-time checking alone):
-1. `Serial` was originally on `NRF_UARTE20`, which is not connected to
-   anything outside the chip on this board -- fixed by switching to
-   `NRF_UARTE30`/P0.00/P0.01, the instance actually wired to the DK's
-   VCOM bridge.
+**Real bugs found and fixed via SWD debugging** (none were catchable by
+compile-time checking alone):
+1. `Serial` went through two wrong instance/pin guesses (`NRF_UARTE20`
+   with guessed pins, then `NRF_UARTE30`/P0.00/P0.01 on the wrong
+   assumption that UARTE20 itself was disconnected) before landing on
+   the actually-correct answer: `NRF_UARTE20`, pins P1.04/P1.05,
+   confirmed via Zephyr's real devicetree (`zephyr,console = &uart20`).
 2. `nrfx_grtc_syscounter_start(true, NULL)` crashed with a HardFault --
    nrfx's `channel_allocate()` writes through its output-channel pointer
    unconditionally despite the header implying it's optional. Fixed by
    passing a real `static uint8_t` instead of `NULL`.
+3. `Serial` TX silently dropped every `print`/`println` call with a
+   string-literal argument -- EasyDMA requires the TX source buffer to
+   be in Data RAM, and the write path handed flash-resident string
+   pointers straight to `nrfx_uarte_tx()`. Fixed with a RAM staging
+   buffer.
+4. `Serial` RX never actually started -- `nrfx_uarte_rx_buffer_set()`
+   alone doesn't enable the receiver; `nrfx_uarte_rx_enable()` was
+   never called. Fixed by calling it once in `begin()` and handling the
+   `NRFX_UARTE_EVT_RX_BUF_REQUEST` event it raises.
 
-**Still not verified as of the latest `VERIFICATION.md`:**
-- `Serial` has not produced confirmed byte output on the DK's VCOM port
-  even after the UARTE30 fix -- likely needs Nordic's Board Configurator
-  tool to enable UART bridging, not a firmware fix.
+**Now confirmed working (previously listed as unverified):**
+- `Serial` TX and RX both confirmed working bidirectionally on real
+  hardware (`SerialEcho`, tested over `COM21` with DTR/RTS asserted --
+  the DK's onboard VCOM bridge tri-states its UART pins until DTR is
+  asserted, which is why all earlier automated-tooling attempts saw zero
+  bytes). See `docs/VERIFICATION.md`'s "Serial mystery: RESOLVED"
+  section for the full account.
+
+**Still not verified:**
 - `micros()`/`delay()` timing accuracy has not been measured
   quantitatively (only "visually roughly correct").
 - `BTN1` has been cross-checked against the devicetree but not physically

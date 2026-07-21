@@ -12,7 +12,7 @@
 ## Onboard peripherals used
 
 - **LED1**: driven by `Blink.ino` via `LED_BUILTIN` (confirmed on real hardware).
-- **Onboard J-Link VCOM UART**: used by `Serial` (UARTE30, P0.00/P0.01 -- see `docs/VERIFICATION.md` for the current status of this).
+- **Onboard J-Link VCOM UART**: used by `Serial` (UARTE20, P1.04/P1.05 -- confirmed working bidirectionally on real hardware, see `docs/VERIFICATION.md`'s "Serial mystery: RESOLVED" section; note the DK's VCOM bridge tri-states its UART pins until the host terminal asserts DTR).
 - **Onboard MX25R6435F SPI flash chip**: SPI00 wiring (SCK=P2.01, MOSI=P2.02, MISO=P2.04, CS=P2.05, RESET=P2.00), confirmed against Zephyr's devicetree and a live SWD register read. See `docs/VERIFICATION.md` for the full bring-up account, including why a JEDEC ID read still isn't returning correct data even with confirmed-correct pins.
 
 ## Extra parts needed for the v2 (SPI/I2C) examples

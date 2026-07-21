@@ -133,12 +133,15 @@
 #define PIN_PWM2 D1         /* placeholder -- VERIFY */
 #define PIN_PWM3 D2         /* placeholder -- VERIFY */
 
-/* Serial (HardwareSerial) pins -- CONFIRMED against this board's
- * uart30_default pinctrl (TX=P0.00, RTS=P0.02; RX=P0.01 from the
- * matching uart30_sleep group), identical to the DK's already
- * hardware-confirmed Serial pins. This project's HardwareSerial is
- * built on UARTE30 (see docs/ARCHITECTURE.md), matching this board's own
- * uart30 devicetree node directly. */
+/* Serial (HardwareSerial) pins -- STALE, NEEDS RE-VERIFICATION
+ * (2026-07-21): these were matched against this board's uart30 pinctrl
+ * on the (now superseded) assumption that HardwareSerial.cpp built on
+ * UARTE30. That instance was wrong even for the nRF54L15-DK itself --
+ * the core now uses UARTE20 globally (see docs/ARCHITECTURE.md and
+ * docs/VERIFICATION.md's "Serial mystery: RESOLVED"). This board has no
+ * physical unit in hand to re-verify against, so these pins are now a
+ * best-effort placeholder again, not confirmed -- check this board's
+ * real uart20 pinctrl node before trusting them. */
 #define PIN_SERIAL_TX P0_PIN(0)
 #define PIN_SERIAL_RX P0_PIN(1)
 
