@@ -126,10 +126,13 @@ use only onboard peripherals).
 ## Roadmap
 
 - **BLE**: not exposed to sketches yet. Nordic's real SoftDevice
-  Controller + MPSL binaries (from `sdk-nrfxlib`) are now vendored
-  under `extern/nordic_sdc/`, and the exact application-side glue
-  needed to link against them has been enumerated by actually linking
-  a test file against the real archives (not guessed). See
+  Controller + MPSL binaries (from `sdk-nrfxlib`) are vendored under
+  `extern/nordic_sdc/`, and the application-side glue functions MPSL
+  needs to link (`cores/nrf54l/mpsl_glue.c`) are implemented and
+  verified with a real zero-undefined-symbols link against the vendored
+  archives. Still blocked on a real conflict before IRQ vectors can be
+  routed: MPSL wants to own the whole GRTC interrupt vector, which this
+  core's `millis()`/`delay()` already uses. See
   [`docs/BLE_ROADMAP.md`](docs/BLE_ROADMAP.md) for status and the
   concrete next steps.
 - **Low-power sleep modes**: System ON idle is implemented -- `delay(ms)`

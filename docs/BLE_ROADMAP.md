@@ -3,15 +3,15 @@
 This document records the research and initial vendoring work done so
 far toward adding BLE support to this core.
 
-**Status (2026-07-21): the real Nordic SDC + MPSL binaries are now
-vendored under `extern/nordic_sdc/`** (fetched directly from Nordic's
-public `nrfconnect/sdk-nrfxlib` GitHub repo -- see
-`extern/nordic_sdc/VERSION.md` for exact commit provenance), and a
-minimal test translation unit calling `sdc_init()`/`mpsl_init()` was
-compiled and linked against them with this core's real toolchain flags,
-enumerating the **exact** application-side glue required (see "Linker
-findings" below). No BLE functionality is wired up yet -- no Arduino
-API, no HCI bridge, no IRQ vectors routed. This is groundwork, not a
+**Status (2026-07-21): the real Nordic SDC + MPSL binaries are vendored
+under `extern/nordic_sdc/`**, and **the four application-side glue
+functions MPSL needs to link are now implemented** in
+`cores/nrf54l/mpsl_glue.c` (see "Glue functions implemented" below) --
+confirmed by a real, zero-undefined-symbols link against the vendored
+archives. No BLE functionality is wired up yet -- no Arduino API, no
+HCI bridge, and IRQ vector routing is blocked on a real, unresolved
+GRTC-ownership conflict with this core's existing `millis()`/`delay()`
+(see step 2 in "Concrete next steps"). This is groundwork, not a
 working BLE stack.
 
 ## Why this isn't a quick add
@@ -224,17 +224,82 @@ drivers don't currently touch TIMER10, but this needs to stay true; any
 future driver work must treat TIMER10 as MPSL/BLE-reserved once BLE is
 wired up.
 
+## Glue functions implemented (2026-07-21)
+
+`cores/nrf54l/mpsl_glue.c` now implements all four functions the linker
+enumerated above:
+
+- `mpsl_hwres_dppi_channel_alloc()` / `mpsl_hwres_ppib_channel_alloc()`
+  -- real, working per-instance flag32 channel allocators (the same
+  `nrfx_flag32_allocator` helper this core's GRTC/GPIOTE drivers already
+  use), keyed by matching the passed-in `NRF_DPPIC_Type*`/`NRF_PPIB_Type*`
+  pointer against this chip's real instances (`NRF_DPPIC00/10/20/30`,
+  `NRF_PPIB00/01/10/11/20/21/22/30`). Channel counts per instance are
+  read from `nrf54l15_application_peripherals.h`
+  (`DPPICxx_CH_NUM_MAX`/`PPIBxx_NTASKSEVENTS_MAX`), not assumed.
+  Deliberately does **not** use this project's vendored
+  `extern/nrfx/helpers/nrfx_gppi*` subsystem -- that's a much larger
+  cross-domain DPPI<->PPIB routing/connection system this core doesn't
+  otherwise need; MPSL's contract is just "give me a channel on this one
+  instance," which a small standalone allocator satisfies directly.
+- `mpsl_low_latency_acquire_callback()` / `_release_callback()` -- **left
+  as no-op stubs on purpose, not a real implementation.** mpsl.h's own
+  doc comment gives "placing the NVM controller in low-latency mode" as
+  only an *example* of what these might do, not a mandated mechanism.
+  The plausible real mechanism on this chip is
+  `nrf_lrcconf_poweron_force_set()` (`extern/nrfx/hal/nrf_lrcconf.h`,
+  the same LRCCONF peripheral noted in `docs/LOW_POWER_ROADMAP.md`), but
+  *which* power domain(s) SDC/MPSL actually need forced active during
+  radio activity on the nRF54L15 isn't documented in these vendored
+  headers -- guessing wrong here would be worse than a no-op (a wrong
+  domain mask could silently power down something SDC assumes is
+  active, versus a no-op only costing timing margin/power efficiency).
+  Needs the real answer from Nordic's own MPSL/NCS reference
+  integration before this stops being a stub.
+
+**Verified by linking for real**, the same way the four functions were
+originally identified: recompiled the minimal `mpsl_init()`/`sdc_init()`
+test file, partially linked it (`ld -r`) against the real vendored SDC +
+MPSL + MPSL-FEM-common archives plus `mpsl_glue.o` and
+`nrfx_flag32_allocator.o`, and confirmed with `arm-none-eabi-nm -u` that
+**zero** undefined symbols remain -- full, real symbol resolution, not
+assumed.
+
+Because `mpsl_glue.c` now lives in `cores/nrf54l/` (required so Arduino
+IDE/`arduino-cli` auto-discovers it -- unlike this project's `Makefile`,
+which lists core sources explicitly), it's compiled into *every* sketch
+build now, including ones that never touch BLE. Confirmed this doesn't
+regress anything: `platform.txt`'s `compiler.includes` and the
+`Makefile`'s `INCLUDES` both gained the two `extern/nordic_sdc/*/include`
+paths (needed for `mpsl_glue.c` to compile at all), and a full manual
+Blink rebuild with `mpsl_glue.c` included still links to the same size
+as before -- `--gc-sections` correctly strips the four unused functions
+out of sketches that never call `mpsl_init()`/`sdc_init()`, so there's
+no dead-weight cost yet.
+
 ## Concrete next steps
 
-1. Implement the four glue functions enumerated above
-   (`mpsl_hwres_dppi_channel_alloc`, `mpsl_hwres_ppib_channel_alloc`,
-   `mpsl_low_latency_acquire_callback`/`_release_callback`) -- these
-   are now fully scoped, not open questions.
+1. ~~Implement the four glue functions~~ **Done** -- see above.
 2. Route this chip's real IRQ vectors (RADIO, the GRTC instance MPSL
    uses as its RTC0, TIMER10, and whichever clock/power IRQ maps to
    `MPSL_IRQ_CLOCK_Handler`) to the exported `MPSL_IRQ_*_Handler`
    functions, following the existing `nrfx_irqs_nrf54l15_application.h`
-   aliasing pattern.
+   aliasing pattern. **Blocked on a real, unresolved conflict, not just
+   undone work:** `mpsl.h`'s own doc comment says "For nRF54 series
+   devices, the RTC timer corresponds to NRF_GRTC" and that
+   `MPSL_IRQ_RTC0_Handler` "should be placed in the interrupt vector
+   table" -- but this core's `wiring_time.c` *already* owns GRTC's
+   vector (routed to `nrfx_grtc_irq_handler` for `millis()`/`micros()`/
+   `delay()`, including the new System ON idle wake channel from
+   `docs/LOW_POWER_ROADMAP.md`). Nothing in the vendored MPSL headers
+   documents whether `MPSL_IRQ_RTC0_Handler` internally also services
+   channels it doesn't own (letting GRTC-based timing coexist) or
+   whether MPSL expects exclusive ownership of the whole GRTC vector
+   once BLE is enabled (which would mean `millis()`/`delay()` need to
+   be rearchitected to go through an MPSL-provided timer instead once
+   BLE is active). This needs a real answer -- from Nordic's own NCS/
+   Zephyr integration source, since these vendored headers alone don't
+   say -- before wiring any IRQ vectors, not a guess.
 3. Get `mpsl_init()` + `sdc_init()` + `sdc_enable()` actually running on
    real hardware (build-and-link success is not the same as working --
    this needs the same over-SWD verification discipline used for every

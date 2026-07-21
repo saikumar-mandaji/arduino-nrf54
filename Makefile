@@ -29,7 +29,8 @@ INCLUDES := \
   -I$(NRFX)/lib -I$(NRFX)/helpers \
   -I$(NRFX)/bsp/stable -I$(NRFX)/bsp/stable/mdk \
   -I$(MDK) -I$(MDK_COMMON) \
-  -I$(CMSIS)
+  -I$(CMSIS) \
+  -Iextern/nordic_sdc/mpsl/include -Iextern/nordic_sdc/softdevice_controller/include
 
 DEFINES := -DNRF54L15_XXAA -DNRF_APPLICATION -D__STARTUP_CLEAR_BSS
 
@@ -50,7 +51,8 @@ CORE_C_SRCS := \
   cores/nrf54l/wiring_time.c \
   cores/nrf54l/wiring_analog.c \
   cores/nrf54l/wiring_interrupts.c \
-  cores/nrf54l/syscalls.c
+  cores/nrf54l/syscalls.c \
+  cores/nrf54l/mpsl_glue.c
 
 CORE_CXX_SRCS := \
   cores/nrf54l/Print.cpp \

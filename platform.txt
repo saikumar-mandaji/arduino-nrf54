@@ -45,7 +45,7 @@ compiler.libraries.ldflags=
 # nrfx and CMSIS_6 are git submodules at the repo root -- extern/nrfx,
 # extern/CMSIS_6 -- referenced here relative to {build.core.path}/../..
 # since the core lives at cores/nrf54l.
-compiler.includes=-I{build.core.path} -I{build.variant.path} -I{build.core.path}/../../extern/nrfx -I{build.core.path}/../../extern/nrfx/drivers/include -I{build.core.path}/../../extern/nrfx/hal -I{build.core.path}/../../extern/nrfx/haly -I{build.core.path}/../../extern/nrfx/lib -I{build.core.path}/../../extern/nrfx/helpers -I{build.core.path}/../../extern/nrfx/bsp/stable -I{build.core.path}/../../extern/nrfx/bsp/stable/mdk -I{build.core.path}/../../extern/nrfx/bsp/stable/mdk/nrf54l/nrf54l15 -I{build.core.path}/../../extern/nrfx/bsp/stable/mdk/common -I{build.core.path}/../../extern/CMSIS_6/CMSIS/Core/Include
+compiler.includes=-I{build.core.path} -I{build.variant.path} -I{build.core.path}/../../extern/nrfx -I{build.core.path}/../../extern/nrfx/drivers/include -I{build.core.path}/../../extern/nrfx/hal -I{build.core.path}/../../extern/nrfx/haly -I{build.core.path}/../../extern/nrfx/lib -I{build.core.path}/../../extern/nrfx/helpers -I{build.core.path}/../../extern/nrfx/bsp/stable -I{build.core.path}/../../extern/nrfx/bsp/stable/mdk -I{build.core.path}/../../extern/nrfx/bsp/stable/mdk/nrf54l/nrf54l15 -I{build.core.path}/../../extern/nrfx/bsp/stable/mdk/common -I{build.core.path}/../../extern/CMSIS_6/CMSIS/Core/Include -I{build.core.path}/../../extern/nordic_sdc/mpsl/include -I{build.core.path}/../../extern/nordic_sdc/softdevice_controller/include
 
 ## Compile c files
 recipe.c.o.pattern="{compiler.path}{compiler.c.cmd}" {compiler.c.flags} {build.extra_flags} {compiler.define} {compiler.includes} "{source_file}" -o "{object_file}"
