@@ -592,6 +592,80 @@ anything:
   button wiring are all still unconfirmed without physically pressing
   it.
 
+## Core API expansion: String/Stream/Print/EEPROM (2026-08-05)
+
+Goal: make this core compile ordinary third-party sensor libraries, not
+just this project's own examples -- most such libraries call `String`,
+or parse over `Serial`/`Wire` as a generic `Stream&`
+(`parseInt()`/`readBytesUntil()`/`find()`), or persist calibration data
+via `EEPROM.h`. None of that existed before this pass; `HardwareSerial`
+derived only from a hand-rolled `Print`, and `TwoWire` derived from
+nothing.
+
+**Real bug found and fixed: `String.h` collides with `<string.h>` on
+case-insensitive filesystems.** Porting `String.h`/`String.cpp` from
+`ArduinoCore-API` verbatim and adding `-Icores/nrf54l` to the include
+path broke `#include <string.h>` project-wide -- `strlen`/`memcpy`/etc.
+all failed with "not declared in this scope". Root cause, confirmed by
+testing: GCC's angle-bracket search checks `-I` directories before the
+system default, and on Windows/macOS's default case-insensitive
+filesystem, `cores/nrf54l/String.h` and the real system `<string.h>`
+are the same file as far as the filesystem is concerned. This is the
+actual, confirmed reason every real Arduino core (AVR, SAMD, etc.)
+names this file `WString.h`, not `String.h` -- not an arbitrary naming
+convention. Renamed to `cores/nrf54l/WString.h`/`WString.cpp` to match;
+confirmed fixed by a clean rebuild.
+
+**Real bug found and fixed: `min()`/`max()` were single-type templates,
+rejecting the mixed-type calls `ArduinoCore-API`'s own `WString.cpp`
+makes** (e.g. `min(decimalPlaces, FLT_MAX_DECIMAL_PLACES)`, comparing
+`unsigned char` against `size_t`). Confirmed via the actual compiler
+error (template argument deduction failure), not guessed. Changed
+`min_`/`max_` in `Arduino.h` to two-type templates with a `decltype`
+return type, matching the pattern other `ArduinoCore-API`-based cores
+use for the same reason.
+
+**Real finding: this chip has no NVMC (classic flash) peripheral at
+all.** The vendored `nrfx_nvmc` driver does not even compile for
+`NRF54L15_XXAA` -- it references `NVMC_CONFIG_WEN_*` register fields
+that don't exist in this chip's real register map (confirmed via the
+actual compiler error, not assumed from documentation). The real
+peripheral is RRAMC (Resistive RAM Controller, `nrfx_rramc`), which is
+genuinely byte-addressable and byte-*writable* in place -- no
+page-erase-before-rewrite is needed, unlike NOR flash. This changed the
+`EEPROM` library's design mid-implementation: no RAM-cache/`commit()`
+emulation layer (the ESP8266/ESP32 pattern originally planned) is
+actually needed here -- `write()`/`update()` persist immediately,
+matching classic AVR `EEPROM.h` semantics. `commit()` is kept as a real
+no-op only for source compatibility with sketches ported from
+ESP8266/ESP32.
+
+**Verified so far (compile/link only, this pass):**
+- `WString`/`Stream`/`Print`/`Printable`/`itoa`/`dtostrf` all compile
+  clean under this core's actual flags (`-fno-exceptions -fno-rtti
+  -std=gnu++17`, confirmed `dtostrf`'s newlib-nano float-`printf`
+  linker trick still works).
+- `Blink` and all six other existing examples
+  (`AnalogReadSerial`/`ButtonInterrupt`/`I2CScanner`/`PWMFade`/
+  `SerialEcho`/`SPILoopback`) rebuilt clean against `HardwareSerial`/
+  `TwoWire` now deriving from `Stream` instead of `Print`/nothing --
+  zero regressions.
+- The BLE-gated build (`-DARDUINO_NRF54_MPSL_ENABLED`, linking the real
+  vendored SDC/MPSL archives) also still links clean with the new
+  `String`/`Stream`/`Print` layer underneath it.
+- New `EEPROMWriteRead` example (`libraries/EEPROM`) compiles and links
+  against the real `nrfx_rramc` driver.
+
+**NOT yet verified: no hardware was available in this session**
+(`nrfjprog` not on `PATH`, no J-Link/DK detected) -- everything above is
+compile/link-clean only. In particular, `EEPROM`'s actual behavior on
+real RRAM (does a written byte genuinely survive a reset, does
+`nrfx_rramc_write_enable_set()` need to be called per-operation rather
+than once in `begin()`) is unconfirmed, and `String`/`Stream` haven't
+been exercised by an actual sensor library yet. Follow-up: flash
+`EEPROMWriteRead` to a real nRF54L15-DK across two resets and confirm
+the counter value persists.
+
 ## Known limitations (see docs/ARCHITECTURE.md for the full list)
 
 No I2C/SPI slave modes, no level-triggered pin interrupts, no

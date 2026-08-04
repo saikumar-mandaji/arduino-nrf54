@@ -52,6 +52,9 @@ reports from other supported boards are very welcome.*
 | `attachInterrupt()` / `detachInterrupt()` | GPIOTE | **Builds, unconfirmed** — IRQ line confirmed armed, ISR-on-button-press not yet confirmed |
 | BLE controller bring-up (`mpsl_init`→`sdc_enable`) | RADIO / MPSL / SDC | **Implemented** at the controller level only — see [Bluetooth LE](#bluetooth-le) |
 | System OFF deep sleep | REGULATORS | **Not implemented** |
+| `String` | — (RAM only) | **Implemented** — ported from `ArduinoCore-API` (the same reference implementation upstream Arduino cores use), including this project's own upstreamed embedded-NUL comparison fix ([arduino/ArduinoCore-API#276](https://github.com/arduino/ArduinoCore-API/pull/276)) |
+| `Stream` (`parseInt`/`readBytesUntil`/`find`/…) | — | **Implemented** — `Serial` and `Wire` now both derive from it, matching upstream Arduino cores, so sensor libraries that parse over `Serial`/`Wire` as a generic `Stream&` now compile and run |
+| `EEPROM` | RRAMC | **Builds, unconfirmed** — `read()`/`write()`/`update()`/`get()`/`put()` implemented directly over this chip's real RRAMC peripheral (byte-addressable, no page-erase needed, unlike NOR flash — see [`libraries/EEPROM/src/EEPROM.h`](libraries/EEPROM/src/EEPROM.h)); not yet confirmed on real hardware that a written byte actually survives a reset |
 
 See [`docs/VERIFICATION.md`](docs/VERIFICATION.md) for exactly how each
 **Implemented** row was verified (register reads, SWD halts, measured
@@ -333,4 +336,13 @@ architecture overview before diving in.
 
 MIT for the code in this repository (see [`LICENSE`](LICENSE)). The
 `extern/nrfx` and `extern/CMSIS_6` submodules carry their own licenses
-(BSD-3-Clause and Apache-2.0 respectively).
+(BSD-3-Clause and Apache-2.0 respectively), and `extern/nordic_sdc`
+carries Nordic's own `LicenseRef-Nordic-5-Clause` (see
+[`docs/BLE_ROADMAP.md`](docs/BLE_ROADMAP.md) for how its binary
+redistribution was confirmed permitted). `cores/nrf54l/WString.{h,cpp}`,
+`Stream.{h,cpp}`, `Print.{h,cpp}`, `Printable.h`, and the
+`deprecated-avr-comp/` shims are ported from
+[`arduino/ArduinoCore-API`](https://github.com/arduino/ArduinoCore-API)
+(LGPL-2.1-or-later, the same reference implementation upstream Arduino
+cores build on) — original license preserved at
+[`cores/nrf54l/third_party_notices/LICENSE-ArduinoCore-API.LGPL-2.1`](cores/nrf54l/third_party_notices/LICENSE-ArduinoCore-API.LGPL-2.1).

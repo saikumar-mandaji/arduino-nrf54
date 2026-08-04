@@ -24,7 +24,7 @@ MDK_COMMON := $(NRFX)/bsp/stable/mdk/common
 CMSIS := extern/CMSIS_6/CMSIS/Core/Include
 
 INCLUDES := \
-  -Icores/nrf54l -Ivariants/nrf54l15dk \
+  -Icores/nrf54l -Ivariants/nrf54l15dk -Ilibraries/EEPROM/src \
   -I$(NRFX) -I$(NRFX)/drivers/include -I$(NRFX)/hal -I$(NRFX)/haly \
   -I$(NRFX)/lib -I$(NRFX)/helpers \
   -I$(NRFX)/bsp/stable -I$(NRFX)/bsp/stable/mdk \
@@ -52,13 +52,18 @@ CORE_C_SRCS := \
   cores/nrf54l/wiring_analog.c \
   cores/nrf54l/wiring_interrupts.c \
   cores/nrf54l/syscalls.c \
-  cores/nrf54l/mpsl_glue.c
+  cores/nrf54l/mpsl_glue.c \
+  cores/nrf54l/itoa.c \
+  cores/nrf54l/dtostrf.c
 
 CORE_CXX_SRCS := \
   cores/nrf54l/Print.cpp \
+  cores/nrf54l/WString.cpp \
+  cores/nrf54l/Stream.cpp \
   cores/nrf54l/HardwareSerial.cpp \
   cores/nrf54l/SPI.cpp \
   cores/nrf54l/Wire.cpp \
+  libraries/EEPROM/src/EEPROM.cpp \
   cores/nrf54l/main.cpp
 
 NRFX_C_SRCS := \
@@ -69,6 +74,7 @@ NRFX_C_SRCS := \
   $(NRFX)/drivers/src/nrfx_saadc.c \
   $(NRFX)/drivers/src/nrfx_pwm.c \
   $(NRFX)/drivers/src/nrfx_gpiote.c \
+  $(NRFX)/drivers/src/nrfx_rramc.c \
   $(NRFX)/helpers/nrfx_flag32_allocator.c
 
 MDK_C_SRCS := $(MDK)/../system_nrf54l.c
@@ -84,7 +90,7 @@ SKETCH_OBJ := $(BUILD_DIR)/$(EXAMPLE).o
 ALL_OBJS := $(C_OBJS) $(CXX_OBJS) $(ASM_OBJS) $(SKETCH_OBJ)
 
 vpath %.c cores/nrf54l:$(NRFX)/drivers/src:$(NRFX)/helpers:$(MDK)/..
-vpath %.cpp cores/nrf54l
+vpath %.cpp cores/nrf54l:libraries/EEPROM/src
 
 .PHONY: all clean
 all: $(BUILD_DIR)/$(EXAMPLE).elf $(BUILD_DIR)/$(EXAMPLE).hex

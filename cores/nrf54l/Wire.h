@@ -9,10 +9,11 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "Stream.h"
 
 #define WIRE_BUFFER_LENGTH 32
 
-class TwoWire
+class TwoWire : public Stream
 {
 public:
     TwoWire();

@@ -26,6 +26,43 @@ extern "C" {
 #define LSBFIRST 0
 #define MSBFIRST 1
 
+/* Common Arduino API macros/constants many sensor libraries assume are
+ * available from Arduino.h, ported from ArduinoCore-API's Common.h
+ * (kept as plain macros here rather than pulling in Common.h itself,
+ * since its PinStatus/PinMode enums would collide with the HIGH/LOW/
+ * INPUT/OUTPUT macros already defined above). */
+#define PI          3.1415926535897932384626433832795
+#define HALF_PI     1.5707963267948966192313216916398
+#define TWO_PI      6.283185307179586476925286766559
+#define DEG_TO_RAD  0.017453292519943295769236907684886
+#define RAD_TO_DEG  57.295779513082320876798154814105
+#define EULER       2.718281828459045235360287471352
+
+#ifndef constrain
+#define constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))
+#endif
+#ifndef radians
+#define radians(deg) ((deg)*DEG_TO_RAD)
+#endif
+#ifndef degrees
+#define degrees(rad) ((rad)*RAD_TO_DEG)
+#endif
+#ifndef sq
+#define sq(x) ((x)*(x))
+#endif
+
+#define lowByte(w) ((uint8_t) ((w) & 0xff))
+#define highByte(w) ((uint8_t) ((w) >> 8))
+
+#define bitRead(value, bit) (((value) >> (bit)) & 0x01)
+#define bitSet(value, bit) ((value) |= (1UL << (bit)))
+#define bitClear(value, bit) ((value) &= ~(1UL << (bit)))
+#define bitToggle(value, bit) ((value) ^= (1UL << (bit)))
+#define bitWrite(value, bit, bitvalue) ((bitvalue) ? bitSet((value), (bit)) : bitClear((value), (bit)))
+#ifndef bit
+#define bit(b) (1UL << (b))
+#endif
+
 void pinMode(uint32_t pin, uint32_t mode);
 void digitalWrite(uint32_t pin, uint32_t value);
 int digitalRead(uint32_t pin);
@@ -68,9 +105,16 @@ void nrf54_core_init(void);
 
 #ifdef __cplusplus
 
-/* min/max/etc as templates, matching upstream Arduino cores. */
-template <typename T> T min_(T a, T b) { return a < b ? a : b; }
-template <typename T> T max_(T a, T b) { return a > b ? a : b; }
+typedef bool     boolean;
+typedef uint8_t  byte;
+typedef uint16_t word;
+
+/* min/max as two-type templates (not single-type), matching upstream
+ * Arduino cores -- callers routinely mix types (e.g. min(uint8_t,
+ * size_t), as ArduinoCore-API's own WString.cpp does), which a
+ * single-type template rejects with a deduction error. */
+template <typename T1, typename T2> auto min_(T1 a, T2 b) -> decltype(a < b ? a : b) { return a < b ? a : b; }
+template <typename T1, typename T2> auto max_(T1 a, T2 b) -> decltype(a > b ? a : b) { return a > b ? a : b; }
 #ifndef min
 #define min(a, b) min_(a, b)
 #endif

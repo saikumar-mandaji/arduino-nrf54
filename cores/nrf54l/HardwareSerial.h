@@ -11,9 +11,9 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "Print.h"
+#include "Stream.h"
 
-class HardwareSerial : public Print
+class HardwareSerial : public Stream
 {
 public:
     HardwareSerial();
