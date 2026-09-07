@@ -13,6 +13,8 @@
 
 #include "wiring_wdt.h"
 #include "wiring_trng.h"
+#include "wiring_temp.h"
+#include "wiring_timer.h"
 
 #ifdef __cplusplus
 extern "C" {

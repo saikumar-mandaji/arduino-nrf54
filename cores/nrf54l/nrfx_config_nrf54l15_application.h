@@ -1157,7 +1157,7 @@
  * Boolean. Accepted values: 0 and 1.
  */
 #ifndef NRFX_TEMP_ENABLED
-#define NRFX_TEMP_ENABLED 0
+#define NRFX_TEMP_ENABLED 1
 #endif
 
 /**
@@ -1199,7 +1199,7 @@
  * Boolean. Accepted values: 0 and 1.
  */
 #ifndef NRFX_TIMER_ENABLED
-#define NRFX_TIMER_ENABLED 0
+#define NRFX_TIMER_ENABLED 1
 #endif
 
 /**
