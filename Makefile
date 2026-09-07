@@ -51,6 +51,8 @@ CORE_C_SRCS := \
   cores/nrf54l/wiring_time.c \
   cores/nrf54l/wiring_analog.c \
   cores/nrf54l/wiring_interrupts.c \
+  cores/nrf54l/wiring_wdt.c \
+  cores/nrf54l/wiring_trng.c \
   cores/nrf54l/syscalls.c \
   cores/nrf54l/mpsl_glue.c \
   cores/nrf54l/itoa.c \
@@ -75,6 +77,8 @@ NRFX_C_SRCS := \
   $(NRFX)/drivers/src/nrfx_pwm.c \
   $(NRFX)/drivers/src/nrfx_gpiote.c \
   $(NRFX)/drivers/src/nrfx_rramc.c \
+  $(NRFX)/drivers/src/nrfx_wdt.c \
+  $(NRFX)/drivers/src/nrfx_cracen.c \
   $(NRFX)/helpers/nrfx_flag32_allocator.c
 
 MDK_C_SRCS := $(MDK)/../system_nrf54l.c

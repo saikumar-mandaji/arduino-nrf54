@@ -1414,9 +1414,12 @@
  * @brief NRFX_WDT_ENABLED
  *
  * Boolean. Accepted values: 0 and 1.
+ *
+ * Flipped from the template's default 0, same as this file already does
+ * for NRFX_PWM_ENABLED etc. -- needed by cores/nrf54l/wiring_wdt.c.
  */
 #ifndef NRFX_WDT_ENABLED
-#define NRFX_WDT_ENABLED 0
+#define NRFX_WDT_ENABLED 1
 #endif
 
 /**

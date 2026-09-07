@@ -666,6 +666,80 @@ been exercised by an actual sensor library yet. Follow-up: flash
 `EEPROMWriteRead` to a real nRF54L15-DK across two resets and confirm
 the counter value persists.
 
+## Board research: "IndicSemi nRF54 board" -- not added, no real product found
+
+A request to add a board variant for "IndicSemi's nRF54 board" was
+investigated via web search. No publicly documented nRF54-series
+product, dev board, or module from a company named IndicSemi could be
+found -- search results for "IndicSemi nRF54" return only unrelated
+Nordic Semiconductor first-party pages (the nRF54L15-DK itself).
+IndicSemi appears to make automotive semiconductor products, not
+nRF54-based wireless modules or dev boards. Rather than fabricate a
+board entry with invented pin numbers for a product that may not exist,
+this was left out entirely, per this project's standing rule to never
+guess datasheet facts. If a real IndicSemi nRF54 product exists under a
+different public name, it can be added the same way `ezurio_bl54l15dvk`/
+`raytac_an54lq15db` were: from that product's actual devicetree/
+datasheet, not invented.
+
+## Ezurio/Raytac Serial pin fix (this pass): re-verified against real Zephyr devicetree source
+
+Both `ezurio_bl54l15dvk` and `raytac_an54lq15db` already existed from an
+earlier pass, with their `PIN_SERIAL_TX`/`PIN_SERIAL_RX` marked "stale,
+needs re-verification" (written while this project's own UARTE20-vs-
+UARTE30 confusion on the DK was still unresolved). This pass fetched
+each board's actual devicetree source directly from
+`zephyrproject-rtos/zephyr` on GitHub (`bl54l15_dvk_common.dtsi` +
+`nrf54l_10_15_cpuapp_common.dtsi` + their pinctrl file for Ezurio;
+`raytac_an54lq_db_15_common.dtsi` + `raytac_an54lq_db_15_cpuapp_common.dtsi`
++ its pinctrl file for Raytac) and confirmed:
+- **Ezurio BL54L15 DVK's own devicetree really does choose `uart30` as
+  console** (TX=P0.00, RX=P0.01) -- the existing file's values were
+  already correct; only the comment was overly pessimistic and has been
+  corrected to CONFIRMED.
+- **Raytac AN54LQ-DB-15's own devicetree chooses `uart20` as console**
+  (TX=P1.04, RX=P1.05) -- **a real bug**: the file previously had
+  P0.00/P0.01 (uart30), copied from the Ezurio board on the incorrect
+  assumption both boards share the same console instance. They don't:
+  Ezurio's DVK genuinely uses uart30, Raytac's board genuinely uses
+  uart20, confirmed independently from each board's own devicetree
+  source, not inferred from one another. Fixed.
+- Also confirmed (unchanged, already correct): both boards' onboard
+  MX25R6435F SPI-NOR flash sits on identical SPI00 pins
+  (SCK=P2.01/MOSI=P2.02/MISO=P2.04/CS=P2.05), and both share the same
+  LED0=P2.09/button0=P1.13 reference-design pins as the DK. Ezurio's
+  board additionally has a confirmed default I2C22 pin group
+  (SCL=P1.11/SDA=P1.12, from its own `i2c22_default` pinctrl node);
+  Raytac's board devicetree has no default I2C pin group at all, so its
+  `PIN_WIRE_SDA`/`PIN_WIRE_SCL` remain an inferred (not confirmed)
+  placeholder, as the file's existing comment already disclosed
+  correctly.
+
+Verified via `arm-none-eabi-gcc -mcpu=cortex-m33 -mfpu=fpv5-sp-d16
+-mfloat-abi=hard -std=gnu11 -Wall -Wextra -fsyntax-only`, same
+cross-compiler syntax-check method used throughout this project -- no
+hardware for either board was available to physically confirm these
+pins.
+
+## Watchdog (WDT) and hardware RNG (TRNG) wrappers (this pass)
+
+Added `wiring_wdt.c`/`.h` (a thin wrapper over `nrfx_wdt`, matching this
+project's existing wrapper style for GPIO/PWM/SAADC) and
+`wiring_trng.c`/`.h` (a thin wrapper over `nrfx_cracen` / the CRACEN
+peripheral's true random number generator, used elsewhere in this
+project already for the SDC's `sdc_rand_source_register()` -- see
+`mpsl_glue.c`).
+
+Verified: both new files, and every existing example, still compile
+clean via `arm-none-eabi-gcc`/`g++ -std=gnu11/gnu++17 -Wall -Wextra`
+against the real vendored `nrfx_wdt`/`nrfx_cracen` driver headers
+(function signatures/enum names confirmed present in
+`extern/nrfx/drivers/include/nrfx_wdt.h` and the CRACEN driver headers
+before use, not guessed). **Not run on real hardware** -- no DK was
+available this pass. See `README.md`'s feature matrix for the exact
+verification-status wording used for these two additions ("Builds,
+unconfirmed").
+
 ## Known limitations (see docs/ARCHITECTURE.md for the full list)
 
 No I2C/SPI slave modes, no level-triggered pin interrupts, no

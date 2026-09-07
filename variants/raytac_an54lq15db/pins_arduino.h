@@ -133,16 +133,22 @@
 #define PIN_PWM2 D1         /* placeholder -- VERIFY */
 #define PIN_PWM3 D2         /* placeholder -- VERIFY */
 
-/* Serial (HardwareSerial) pins -- STALE, NEEDS RE-VERIFICATION
- * (2026-07-21): these were matched against this board's uart30 pinctrl
- * on the (now superseded) assumption that HardwareSerial.cpp built on
- * UARTE30. That instance was wrong even for the nRF54L15-DK itself --
- * the core now uses UARTE20 globally (see docs/ARCHITECTURE.md and
- * docs/VERIFICATION.md's "Serial mystery: RESOLVED"). This board has no
- * physical unit in hand to re-verify against, so these pins are now a
- * best-effort placeholder again, not confirmed -- check this board's
- * real uart20 pinctrl node before trusting them. */
-#define PIN_SERIAL_TX P0_PIN(0)
-#define PIN_SERIAL_RX P0_PIN(1)
+/* Serial (HardwareSerial) pins -- CONFIRMED, and a real bug fix over
+ * this file's previous value. HardwareSerial.cpp builds on UARTE20
+ * globally (see docs/VERIFICATION.md's "Serial mystery: RESOLVED"), and
+ * this board's OWN devicetree (raytac_an54lq_db_15_cpuapp_common.dtsi)
+ * sets `zephyr,console = &uart20;` with uart20's real pinctrl
+ * (raytac_an54lq_db_15-pinctrl.dtsi) giving TX=P1.04, RX=P1.05
+ * (RTS=P1.06/CTS=P1.07, not wired up by this core -- 2-wire only) --
+ * fetched and read directly from zephyrproject-rtos/zephyr, not
+ * inferred from the Ezurio board this time. This file previously had
+ * P0.00/P0.01 (uart30), which is wrong for THIS board specifically:
+ * unlike the Ezurio BL54L15 DVK (whose own devicetree really does
+ * choose uart30 as console -- see that variant's file), this board's
+ * console is uart20, matching the DK's instance even though the pins
+ * differ from the DK's P1.04/P1.05... actually they're identical to the
+ * DK's pins too, since both boards share Nordic's reference layout. */
+#define PIN_SERIAL_TX P1_PIN(4)
+#define PIN_SERIAL_RX P1_PIN(5)
 
 #endif /* PINS_ARDUINO_H */

@@ -11,6 +11,9 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "wiring_wdt.h"
+#include "wiring_trng.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
