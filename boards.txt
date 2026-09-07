@@ -1,4 +1,5 @@
 menu.debug=Debug
+menu.prog=Programmer
 
 nrf54l15dk.name=Nordic nRF54L15-DK
 
@@ -30,9 +31,14 @@ nrf54l15dk.menu.debug.off.build.extra_flags=-DNRF54L15_XXAA -DNRF_APPLICATION -D
 ## the DK, XIAO boards don't have a built-in J-Link, and whether this
 ## board exposes SWD test pads for nrfjprog or needs a different
 ## bootloader/UF2-style flow hasn't been checked against real hardware or
-## Seeed's own docs this session. nrfjprog/jlink is kept here as the only
-## upload path this platform currently implements -- treat this as
-## unverified, not confirmed, until checked against a real board.
+## Seeed's own docs this session. The default programmer below
+## (nrfjprog/jlink) is kept as-is for consistency with the other boards,
+## but is almost certainly the wrong choice in practice for a board with
+## no onboard debug probe -- the OpenOCD options below (which work with a
+## cheap external CMSIS-DAP or ST-Link SWD probe wired to this board's
+## SWDIO/SWDCLK pads) are the more realistic upload path until someone
+## confirms the actual SWD pad locations against real hardware or
+## Seeed's own docs.
 xiao_nrf54l15.name=Seeed Studio XIAO nRF54L15
 
 xiao_nrf54l15.upload.tool=nrfjprog
@@ -51,11 +57,24 @@ xiao_nrf54l15.build.board=XIAO_NRF54L15
 xiao_nrf54l15.build.extra_flags=-DNRF54L15_XXAA -DNRF_APPLICATION -D__STARTUP_CLEAR_BSS
 xiao_nrf54l15.build.ldscript=nrf54l15_xxaa_application.ld
 xiao_nrf54l15.build.openocdscript=
+xiao_nrf54l15.build.openocd_interface=cmsis-dap
 
 xiao_nrf54l15.menu.debug.on=Enabled
 xiao_nrf54l15.menu.debug.on.build.extra_flags=-DNRF54L15_XXAA -DNRF_APPLICATION -D__STARTUP_CLEAR_BSS -DDEBUG_NRF
 xiao_nrf54l15.menu.debug.off=Disabled
 xiao_nrf54l15.menu.debug.off.build.extra_flags=-DNRF54L15_XXAA -DNRF_APPLICATION -D__STARTUP_CLEAR_BSS -DNDEBUG
+
+xiao_nrf54l15.menu.prog.nrfjprog=nrfjprog (onboard/genuine SEGGER J-Link)
+xiao_nrf54l15.menu.prog.nrfjprog.upload.tool=nrfjprog
+xiao_nrf54l15.menu.prog.openocd_cmsisdap=OpenOCD (external CMSIS-DAP probe)
+xiao_nrf54l15.menu.prog.openocd_cmsisdap.upload.tool=openocd
+xiao_nrf54l15.menu.prog.openocd_cmsisdap.build.openocd_interface=cmsis-dap
+xiao_nrf54l15.menu.prog.openocd_stlink=OpenOCD (external ST-Link probe)
+xiao_nrf54l15.menu.prog.openocd_stlink.upload.tool=openocd
+xiao_nrf54l15.menu.prog.openocd_stlink.build.openocd_interface=stlink
+xiao_nrf54l15.menu.prog.openocd_jlink=OpenOCD (external J-Link, via OpenOCD instead of nrfjprog)
+xiao_nrf54l15.menu.prog.openocd_jlink.upload.tool=openocd
+xiao_nrf54l15.menu.prog.openocd_jlink.build.openocd_interface=jlink
 
 ## Ezurio BL54L15 DVK (nRF54L15 module dev kit)
 ## Same nRF54L15 die as the DK -- see variants/ezurio_bl54l15dvk/pins_arduino.h

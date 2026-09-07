@@ -740,8 +740,78 @@ available this pass. See `README.md`'s feature matrix for the exact
 verification-status wording used for these two additions ("Builds,
 unconfirmed").
 
+## On-die temperature sensor and general-purpose hardware timer (this pass)
+
+Added `wiring_temp.c`/`.h` (a thin blocking-mode wrapper over
+`nrfx_temp`) and `wiring_timer.c`/`.h` (a periodic-callback wrapper over
+`nrfx_timer` on TIMER00, an instance otherwise unused by this core, kept
+deliberately separate from GRTC-based `millis()`/`micros()`/`delay()` so
+a sketch's own fixed-period interrupt need doesn't contend with the
+core's own timekeeping).
+
+Verified: both new files compile clean via `arm-none-eabi-gcc -std=gnu11
+-Wall -Wextra -Wpedantic -fsyntax-only` against the real vendored
+`nrfx_temp`/`nrfx_timer` driver headers, individually and compiled
+alongside the rest of `cores/nrf54l/`'s existing sources (no new
+warnings introduced; the only warnings seen were pre-existing ones
+inside vendored `extern/nrfx`/`extern/CMSIS_6` files, unrelated to this
+change). One real bug was caught and fixed during this check: the
+initial `wiring_timer.c` declared its static `nrfx_timer_t` instance as
+`const`, which `nrfx_timer_init()`/`_enable()`/`_disable()` correctly
+rejected (they mutate the instance's control block) -- `-Wdiscarded-
+qualifiers` caught this immediately, fixed by dropping `const`.
+
+**Not run on real hardware** -- no DK was available this pass. In
+particular, TIMER00's IRQ vector wiring (`nrfx_timer_00_irq_handler` ->
+`TIMER00_IRQHandler`, same macro-substitution mechanism documented above
+for WDT31/GRTC) is untested on silicon; the project's own
+"IRQ vector wiring was broken project-wide" bug (found earlier this
+project's history, see above) is exactly the class of bug that a
+compile/link-clean check cannot catch, so this should be the first thing
+confirmed if real hardware becomes available -- flash a sketch that
+calls `timer_start_periodic_us()` and confirm the callback actually
+fires, the same way `delay()`'s System ON idle path was confirmed.
+
+## OpenOCD upload path added (this pass)
+
+`xiao_nrf54l15` is the one board in this project explicitly documented
+as lacking an onboard debug probe (see its `boards.txt` comment) -- its
+previous `nrfjprog`-only upload path assumed the user owns a genuine
+external SEGGER J-Link, which is an expensive and unnecessary
+assumption when a much cheaper CMSIS-DAP or ST-Link SWD probe would
+work just as well via OpenOCD. Added a `tools.openocd` definition to
+`platform.txt` and a `menu.prog` ("Programmer") boards.txt submenu for
+`xiao_nrf54l15` offering `nrfjprog` (default, unchanged), or OpenOCD
+with a CMSIS-DAP, ST-Link, or J-Link interface script.
+
+**Verification limits, disclosed honestly**: OpenOCD's Nordic nRF54L
+target script (`target/nordic/nrf54l.cfg`) was confirmed to exist
+upstream via a public mailing-list search (openocd-devel patch series
+adding nRF54L series support, including NVM/RRAM programming support
+and a dedicated nRF54L15-DK board config) -- not by running OpenOCD
+itself, since no such tool is installed in this environment. The exact
+`platform.txt` recipe syntax (interface/target script paths, the
+`program ... verify reset exit` monitor command) follows OpenOCD's own
+documented command-line conventions and this project's existing
+`tools.nrfjprog.upload.pattern` quoting style, but has not been run
+against a real probe or board. Treat this as "should work, matches
+OpenOCD's documented interface," not "confirmed working."
+
 ## Known limitations (see docs/ARCHITECTURE.md for the full list)
 
 No I2C/SPI slave modes, no level-triggered pin interrupts, no
 TrustZone-M partitioning, no low-power sleep, no OTA, no radio (BLE/
 802.15.4) -- all deliberately out of scope, not overlooked.
+
+**Explicitly and permanently out of scope for "full feature parity"
+requests**: a complete BLE host stack (GATT/pairing/HID/ANCS), Zigbee,
+an OpenThread port, and Matter primitives are not implemented and are
+not being faked. These are each multi-month engineering efforts in
+their own right, cannot be honestly verified without real hardware and
+(for the radio protocols) certified test equipment, and building them
+by reading and reshaping another project's source would risk both a
+license violation and misrepresenting unverified work as done. Anyone
+wanting to claim "feature parity" with another nRF54 Arduino-style core
+should treat that other project's own claims skeptically too -- see the
+generalized findings kept in `docs/BLE_ROADMAP.md` and
+`docs/LOW_POWER_ROADMAP.md`.

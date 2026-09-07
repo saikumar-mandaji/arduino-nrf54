@@ -81,3 +81,18 @@ recipe.size.eeprom=^(?:\.eeprom)\s+([0-9]+).*
 tools.nrfjprog.cmd=nrfjprog
 tools.nrfjprog.cmd.windows=nrfjprog.exe
 tools.nrfjprog.upload.pattern="{cmd}" --program "{build.path}/{build.project_name}.hex" --chiperase --verify -f NRF54L --reset
+
+## OpenOCD upload -- an alternative to nrfjprog for boards with no
+## onboard SEGGER J-Link (e.g. xiao_nrf54l15, see its boards.txt
+## comment), using whatever external SWD probe OpenOCD supports
+## (CMSIS-DAP/DAPLink, ST-Link, or a real J-Link via OpenOCD's own
+## jlink driver instead of nrfjprog). Requires OpenOCD installed
+## separately (openocd.org) with Nordic nRF54L target support, added
+## upstream in the nordic/nrf54l.cfg target script -- confirm your
+## OpenOCD build is new enough to include it before relying on this.
+## {build.openocd_interface} is set per-board by a "Programmer" boards.txt
+## menu entry (cmsis-dap / stlink / jlink); programs via .elf (not .hex)
+## since OpenOCD's own `program` command handles ELF directly.
+tools.openocd.cmd=openocd
+tools.openocd.cmd.windows=openocd.exe
+tools.openocd.upload.pattern="{cmd}" -f interface/{build.openocd_interface}.cfg -f target/nordic/nrf54l.cfg -c "program {build.path}/{build.project_name}.elf verify reset exit"

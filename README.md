@@ -55,6 +55,10 @@ reports from other supported boards are very welcome.*
 | `String` | — (RAM only) | **Implemented** — ported from `ArduinoCore-API` (the same reference implementation upstream Arduino cores use), including this project's own upstreamed embedded-NUL comparison fix ([arduino/ArduinoCore-API#276](https://github.com/arduino/ArduinoCore-API/pull/276)) |
 | `Stream` (`parseInt`/`readBytesUntil`/`find`/…) | — | **Implemented** — `Serial` and `Wire` now both derive from it, matching upstream Arduino cores, so sensor libraries that parse over `Serial`/`Wire` as a generic `Stream&` now compile and run |
 | `EEPROM` | RRAMC | **Builds, unconfirmed** — `read()`/`write()`/`update()`/`get()`/`put()` implemented directly over this chip's real RRAMC peripheral (byte-addressable, no page-erase needed, unlike NOR flash — see [`libraries/EEPROM/src/EEPROM.h`](libraries/EEPROM/src/EEPROM.h)); not yet confirmed on real hardware that a written byte actually survives a reset |
+| `wdt_begin()` / `wdt_feed()` | WDT | **Builds, unconfirmed** — real hardware watchdog wrapper (`cores/nrf54l/wiring_wdt.{h,c}`); one-way once started, matching real WDT hardware behavior; not yet confirmed on real hardware that a missed `wdt_feed()` actually resets the chip |
+| `hwrng_get_bytes()` / `hwrng_random32()` | CRACEN (TRNG) | **Builds, unconfirmed** — real hardware entropy, not a seeded PRNG (`cores/nrf54l/wiring_trng.{h,c}`); not yet confirmed on real hardware that returned bytes are non-deterministic across resets |
+| `temp_read_centi_celsius()` | TEMP | **Builds, unconfirmed** — on-die temperature sensor, blocking read (`cores/nrf54l/wiring_temp.{h,c}`); not yet confirmed against a known-temperature reference |
+| `timer_start_periodic_us()` / `timer_stop()` | TIMER00 | **Builds, unconfirmed** — general-purpose periodic hardware timer, separate from GRTC-based `millis()`/`delay()` (`cores/nrf54l/wiring_timer.{h,c}`); not yet confirmed on real hardware that the callback fires at the requested period |
 
 See [`docs/VERIFICATION.md`](docs/VERIFICATION.md) for exactly how each
 **Implemented** row was verified (register reads, SWD halts, measured
