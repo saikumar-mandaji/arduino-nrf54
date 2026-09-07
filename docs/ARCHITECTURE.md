@@ -109,21 +109,22 @@ resolved entirely by the preprocessor before the driver source is even
 compiled. No project code hand-maintains a vector table or per-peripheral
 IRQ handler name.
 
-This was compared (2026-07-21) against `lolren/nrf54-arduino-core`'s
-approach, which hand-writes its own ~500-line `startup_nrf54l15.S` with
-the entire nRF54L15 vector table transcribed by hand, and hardcodes a
-specific peripheral-mode name at each shared serial-fabric vector slot
-(e.g. the vector table entry at the SERIAL21 fabric instance is named
+This was compared (2026-07-21) against another independent nRF54
+Arduino-core implementation reviewed purely for reference, which
+hand-writes its own ~500-line startup assembly file with the entire
+nRF54L15 vector table transcribed by hand, and hardcodes a specific
+peripheral-mode name at each shared serial-fabric vector slot (e.g. the
+vector table entry at the SERIAL21 fabric instance is named
 `SPIM21_IRQHandler`, not a mode-agnostic name). This appears to have
-introduced a real bug: their file also separately defines a
-`TWIM21_IRQHandler` weak stub (for their I2C/Wire driver's ISR
-presumably to override), but the vector table itself never references
-that name at all -- only `SPIM21_IRQHandler`. If their I2C driver's real
-ISR is named to match that stub, it would silently never be called by
-hardware, since the vector table points at a different symbol name for
-that slot. (Not independently confirmed against their actual TWIM
-driver source -- flagged as a likely bug from the vector-table/stub
-mismatch alone, not verified end-to-end on their hardware.)
+introduced a real bug: that project separately defines a
+`TWIM21_IRQHandler` weak stub (for its I2C/Wire driver's ISR presumably
+to override), but the vector table itself never references that name at
+all -- only `SPIM21_IRQHandler`. If its I2C driver's real ISR is named
+to match that stub, it would silently never be called by hardware,
+since the vector table points at a different symbol name for that slot.
+(Not independently confirmed against that project's actual TWIM driver
+source -- flagged as a likely bug from the vector-table/stub mismatch
+alone, not verified end-to-end on real hardware.)
 
 nrfx's own official mapping avoids this class of bug by construction:
 each shared serial-fabric instance's vector name is generic

@@ -1,7 +1,7 @@
 # arduino-nrf54
 
 [![CI](https://github.com/saikumar-mandaji/arduino-nrf54/actions/workflows/ci.yml/badge.svg)](https://github.com/saikumar-mandaji/arduino-nrf54/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: LGPL-2.1](https://img.shields.io/badge/License-LGPL--2.1-blue.svg)](LICENSE)
 ![Target](https://img.shields.io/badge/target-nRF54L15-00A9CE)
 ![Status](https://img.shields.io/badge/status-hardware%20bring--up%20in%20progress-orange)
 
@@ -334,10 +334,11 @@ architecture overview before diving in.
 
 ## License
 
-MIT for the code in this repository (see [`LICENSE`](LICENSE)). The
-`extern/nrfx` and `extern/CMSIS_6` submodules carry their own licenses
-(BSD-3-Clause and Apache-2.0 respectively), and `extern/nordic_sdc`
-carries Nordic's own `LicenseRef-Nordic-5-Clause` (see
+LGPL-2.1-or-later for the code in this repository (see
+[`LICENSE`](LICENSE)). The `extern/nrfx` and `extern/CMSIS_6`
+submodules carry their own licenses (BSD-3-Clause and Apache-2.0
+respectively), and `extern/nordic_sdc` carries Nordic's own
+`LicenseRef-Nordic-5-Clause` (see
 [`docs/BLE_ROADMAP.md`](docs/BLE_ROADMAP.md) for how its binary
 redistribution was confirmed permitted). `cores/nrf54l/WString.{h,cpp}`,
 `Stream.{h,cpp}`, `Print.{h,cpp}`, `Printable.h`, and the

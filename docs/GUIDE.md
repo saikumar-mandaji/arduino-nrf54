@@ -1,7 +1,7 @@
 # arduino-nrf54 -- Developer Guide
 
 [![CI](https://github.com/saikumar-mandaji/arduino-nrf54/actions/workflows/ci.yml/badge.svg)](https://github.com/saikumar-mandaji/arduino-nrf54/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../LICENSE)
+[![License: LGPL-2.1](https://img.shields.io/badge/License-LGPL--2.1-blue.svg)](../LICENSE)
 ![Target](https://img.shields.io/badge/target-nRF54L15--DK-00A9CE)
 ![Status](https://img.shields.io/badge/status-hardware%20bring--up%20in%20progress-orange)
 ![Scope](https://img.shields.io/badge/scope-v1--v4%20(GPIO%2C%20Serial%2C%20SPI%2C%20Wire%2C%20ADC%2C%20PWM%2C%20IRQ)-blue)
@@ -556,6 +556,7 @@ in `pins_arduino.h` is correct.
 
 ## License
 
-MIT for the code in this repository (see [`LICENSE`](../LICENSE)). The
-`extern/nrfx` and `extern/CMSIS_6` submodules carry their own licenses
-(BSD-3-Clause and Apache-2.0 respectively).
+LGPL-2.1-or-later for the code in this repository (see
+[`LICENSE`](../LICENSE)). The `extern/nrfx` and `extern/CMSIS_6`
+submodules carry their own licenses (BSD-3-Clause and Apache-2.0
+respectively).

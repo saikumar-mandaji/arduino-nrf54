@@ -45,7 +45,7 @@ all. But being a precompiled binary means:
   pattern as this repo already uses for pruning `nrfx`'s MDK headers to
   just the nRF54L15 variant), but we cannot build it ourselves or
   inspect/patch its internals.
-- License terms for redistributing it inside this MIT-licensed open
+- License terms for redistributing it inside this open
   source core need to be checked against Nordic's actual license file
   in `sdk-nrfxlib` before shipping it (typically a Nordic 5-Clause
   license permitting binary redistribution for use on Nordic ICs --
@@ -79,50 +79,31 @@ Connect SDK uses internally (Zephyr's BLE host talking to SDC over
 HCI); we'd be doing the same split with NimBLE as the host instead of
 Zephyr's.
 
-## Reference repos found (2026-07-21)
+## Reference research (2026-07-21)
 
-- **`lolren/nrf54-arduino-core`** (GitHub, MIT + third-party notices,
-  created 2026-02, actively released -- confirmed real via `gh repo
-  view`/`gh api`, not just its own README claims). This is an Arduino
-  core for nRF54L targeting Seeed XIAO nRF54L15/LM20A + a Nordic DK
-  target, and it vendors **real Nordic SDC + MPSL prebuilt binaries**
-  at `hardware/nrf54l15clean/nrf54l15clean/libraries/
-  Nrf54L15-Clean-Implementation/third_party/nordic_sdc/lib/nrf54l/`
-  (`libsoftdevice_controller_multirole.a`, `libmpsl.a`,
-  `libmpsl_fem_common.a`, soft-float ABI, built from Nordic `nrfxlib`
-  `v3.4.0-rc1-12-g7a07f89ee`) -- confirmed by reading the vendored
-  `VERSION`/`LICENSE` files directly via the GitHub API, not the
-  README's prose. **This directly resolves open question #2 below**:
-  SDC/MPSL genuinely can be vendored and linked into a non-Zephyr,
-  non-NCS Arduino-style build -- someone has actually done it.
-  - **Its license file also resolves open question #1**: the vendored
-    `LICENSE` is `LicenseRef-Nordic-5-Clause` (Nordic Semiconductor ASA,
-    2018), and clause 2 explicitly permits binary-form redistribution
-    (not just "use") as long as the copyright notice is kept and the
-    result is only used with a Nordic IC -- so vendoring the compiled
-    `.a` inside this MIT repo's release archives is licensed, the same
-    way this repo already handles `nrfx`/`CMSIS_6` license carry-through.
-  - **Caveat -- treat the README's feature claims skeptically.** Its
-    README claims a huge surface (full custom BLE host+link-layer stack
-    with LE Secure Connections/privacy/HID/ANCS, plus experimental
-    Zigbee, an OpenThread port, and Matter primitives) built from a repo
-    created only ~5 months prior. That's an implausible amount of
-    genuinely-tested work for that timeframe from a small account (37
-    stars), and the README's own "Bare Metal / no SoftDevice" framing
-    is misleading given the real vendored SDC binaries found above --
-    the actual controller is Nordic's own compiled stack, not something
-    written from scratch against raw radio registers. Use this repo as
-    a **build-system/vendoring reference** (how they lay out the `.a`
-    files, what license files they carry, what nrfxlib revision they
-    pulled), not as a source of verified technical facts about what
-    "works" -- re-verify anything borrowed from it on real hardware
-    before trusting it, per this project's own standing practice.
-  - Also worth a look before implementing: their
-    `nrf54l15_hal_ble_radio_tail.inc` (how they wire nrfx/CMSIS interrupt
-    vectors to the SDC binary) and their packaged `docs/
-    TWO_BOARD_RELEASE_GATE.md` (what a two-board BLE regression test
-    actually needs to check), as concrete examples to compare against,
-    not to copy uncritically.
+- **An independent, real-world precedent confirmed SDC/MPSL can be
+  vendored into a non-Zephyr, non-NCS Arduino-style build** (found by
+  reviewing another public nRF54L Arduino-core project for reference,
+  not named here or elsewhere in this repo, and no code copied from it
+  -- see this project's own vendoring in `extern/nordic_sdc/`, pulled
+  directly from Nordic's own `sdk-nrfxlib`, not from that reference).
+  That project vendors real Nordic SDC + MPSL prebuilt binaries
+  (soft-float ABI, built from Nordic `nrfxlib`) and ships them under
+  Nordic's own `LicenseRef-Nordic-5-Clause` license terms. **This
+  directly resolves open question #2 below**: someone has actually done
+  it, confirming the approach is viable.
+  - **Its license terms also resolve open question #1**: clause 2 of
+    `LicenseRef-Nordic-5-Clause` explicitly permits binary-form
+    redistribution (not just "use") as long as the copyright notice is
+    kept and the result is only used with a Nordic IC -- so vendoring
+    the compiled `.a` inside this repo's release archives is licensed,
+    the same way this repo already handles `nrfx`/`CMSIS_6` license
+    carry-through.
+  - **Caveat -- treat any third-party project's own feature claims
+    skeptically** rather than at face value; re-verify anything that
+    might be borrowed as an idea on real hardware before trusting it,
+    per this project's own standing practice of only trusting numbers
+    and behavior we measured ourselves.
 - **Nordic's own "Bare Metal option for nRF Connect SDK" for nRF54L
   Series** (launched officially ~August 2025, per
   nordicsemi.com/Products/Development-software/nRF-Connect-SDK/
@@ -145,15 +126,15 @@ Zephyr's.
 ## Vendoring done, and what was verified (2026-07-21)
 
 Fetched directly from `nrfconnect/sdk-nrfxlib` (Nordic's own public
-repo, not copied from `lolren/nrf54-arduino-core` or any other
-third party -- see `extern/nordic_sdc/VERSION.md` for exact commit
-SHAs) into `extern/nordic_sdc/`:
+repo, not copied from any third party -- see
+`extern/nordic_sdc/VERSION.md` for exact commit SHAs) into
+`extern/nordic_sdc/`:
 
 - `softdevice_controller/lib/libsoftdevice_controller_multirole.a`
   (hard-float ABI, matching this core's `-mfloat-abi=hard
-  -mfpu=fpv5-sp-d16` in the root `Makefile` -- soft-float, which is
-  what `lolren/nrf54-arduino-core` uses, would **not** have linked
-  correctly against this project's existing float ABI).
+  -mfpu=fpv5-sp-d16` in the root `Makefile` -- a soft-float build
+  would **not** have linked correctly against this project's existing
+  float ABI).
 - `mpsl/lib/libmpsl.a` and `mpsl/lib/libmpsl_fem_common.a` (same
   hard-float ABI). `libmpsl_fem_common.a` turned out to be required
   even without an external front-end module/PA chip -- see the linker

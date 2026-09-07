@@ -90,40 +90,32 @@ maps onto the same split:
    `setup()`, matching the pattern ESP32's `esp_sleep_get_wakeup_cause()`
    gives users.
 
-## Reference repo found (2026-07-21)
+## Reference research (2026-07-21)
 
-`lolren/nrf54-arduino-core` (GitHub, MIT -- see `docs/BLE_ROADMAP.md`'s
-"Reference repos found" section for how it was verified as a real,
-actively-released repo rather than trusting its README at face value)
-ships a comparable idle/sleep design for the same chip family (XIAO
-nRF54L15/LM20A). Concretely useful, verified-by-reading-source parts:
+Another public nRF54L Arduino-core project (reviewed for reference only
+-- not named here, and no code copied from it) ships a comparable
+idle/sleep design for the same chip family. Concretely useful ideas
+worth adapting independently, not copying:
 
-- **A peripheral-driver idle-service hook pattern.** Its
-  `cores/nrf54l15/idle_service.cpp` (real file, read directly) defines
-  `nrf54l15_clean_idle_service()`/`nrf54l15_clean_yield_service()` as a
+- **A peripheral-driver idle-service hook pattern** -- a central
   dispatcher that each peripheral driver (analog-write, serial, SPI,
-  Wire, optionally BLE via a weak symbol) hooks into, gated by an
-  `NRF54L15_CLEAN_AUTO_GATE` compile flag. This is a directly reusable
-  pattern for next step #2 below: rather than auditing every driver
-  ad hoc, give this core the same kind of central idle-hook dispatcher
-  so each peripheral registers its own "is it safe to sleep now"
-  check/gate instead of `delay()` needing to know about every driver.
-- **Example sketch names worth reading before designing our own API**
-  (`libraries/Nrf54L15-Clean-Implementation/examples/LowPower/`):
-  `LowPowerIdleWfi`, `LowPowerDelaySystemOff`, `LowPowerGrtcPwmSystemOff`,
-  `LowPowerCpuFrequencyControl`, `LowPowerDutyCycleAdc`,
-  `LowPowerPeripheralGating`, `InterruptWatchdogLowPower` -- these are
-  real example filenames pulled from the repo's git tree, useful as a
-  checklist of the kinds of scenarios a `LowPower` API should cover
-  (plain WFI idle, timed System OFF, GRTC-driven wake, CPU frequency
-  scaling, ADC duty-cycling, peripheral clock gating), not yet verified
-  line-by-line for correctness.
-- **Same caveat as the BLE roadmap**: this repo's README claims specific
-  measured current numbers (e.g. an nPM1300 hibernate path reaching
-  "~0.5 uA") and a large feature surface; treat those as claims to
-  independently re-measure on our own hardware, not facts to cite,
-  consistent with this project's practice of only trusting numbers we
-  measured ourselves (see `docs/VERIFICATION.md`).
+  Wire, optionally BLE via a weak symbol) hooks into, gated by a compile
+  flag. This is a directly reusable *pattern* for next step #2 below:
+  rather than auditing every driver ad hoc, give this core the same
+  kind of central idle-hook dispatcher so each peripheral registers its
+  own "is it safe to sleep now" check/gate instead of `delay()` needing
+  to know about every driver.
+- **A useful checklist of low-power scenarios to cover** when designing
+  our own `LowPower` API: plain WFI idle, timed System OFF, GRTC-driven
+  wake, CPU frequency scaling, ADC duty-cycling, peripheral clock
+  gating, and a watchdog-interaction case -- these categories are a
+  reasonable coverage checklist regardless of source.
+- **Same caveat as the BLE roadmap**: treat any third-party project's
+  claimed measured current numbers or feature surface skeptically;
+  independently re-measure on our own hardware rather than citing
+  someone else's numbers, consistent with this project's practice of
+  only trusting numbers we measured ourselves (see
+  `docs/VERIFICATION.md`).
 
 ## Concrete next steps
 
